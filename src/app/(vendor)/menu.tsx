@@ -541,14 +541,16 @@ export default function VendorMenuPlanner() {
             {parseLocalDate(selectedDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
           </Text>
         </View>
-        <TouchableOpacity style={styles.autofillBtn} onPress={() => {
-          const all: Record<string, boolean> = {};
-          plans?.filter(p => p.status === 'active').forEach(p => all[p.id] = true);
-          setSelectedAutofillPlans(all);
-          setAutofillModalVisible(true);
-        }}>
-          <Text style={styles.autofillBtnText}>🪄 Autofill Week</Text>
-        </TouchableOpacity>
+        {plans && plans.some(p => p.status === 'active') && (
+          <TouchableOpacity style={styles.autofillBtn} onPress={() => {
+            const all: Record<string, boolean> = {};
+            plans?.filter(p => p.status === 'active').forEach(p => all[p.id] = true);
+            setSelectedAutofillPlans(all);
+            setAutofillModalVisible(true);
+          }}>
+            <Text style={styles.autofillBtnText}>🪄 Autofill Week</Text>
+          </TouchableOpacity>
+        )}
       </View>
 
       <View style={styles.calendarContainer}>
@@ -863,9 +865,16 @@ export default function VendorMenuPlanner() {
                 <TouchableOpacity onPress={() => setCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}><Text style={{fontSize: 24, color: '#101828'}}>›</Text></TouchableOpacity>
               </View>
               <View style={{flexDirection: 'row', alignItems: 'center', gap: 16}}>
-                <TouchableOpacity onPress={() => setCalendarMonth(parseLocalDate(selectedDate))}>
-                  <Text style={{color: '#FF6B6B', fontWeight: '600', fontSize: 13}}>Snap to Selected</Text>
-                </TouchableOpacity>
+                {(() => {
+                  const sel = parseLocalDate(selectedDate);
+                  const isCentered = calendarMonth.getMonth() === sel.getMonth() && calendarMonth.getFullYear() === sel.getFullYear();
+                  if (isCentered) return null;
+                  return (
+                    <TouchableOpacity onPress={() => setCalendarMonth(sel)}>
+                      <Text style={{color: '#FF6B6B', fontWeight: '600', fontSize: 13}}>Snap to Selected</Text>
+                    </TouchableOpacity>
+                  );
+                })()}
                 <TouchableOpacity onPress={() => setMonthModalVisible(false)}>
                   <Text style={styles.closeBtn}>Close</Text>
                 </TouchableOpacity>
