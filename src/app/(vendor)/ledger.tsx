@@ -1,16 +1,20 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, SafeAreaView, ActivityIndicator } from 'react-native';
-import { useQuery } from '@tanstack/react-query';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, SafeAreaView, ActivityIndicator, TouchableOpacity, Modal, TextInput, Alert } from 'react-native';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
 
 export default function VendorLedger() {
   const { user } = useAuthStore();
+  const queryClient = useQueryClient();
+  const [upiModal, setUpiModal] = useState(false);
+  const [upiInput, setUpiInput] = useState('');
 
   const { data: kitchen } = useQuery({
     queryKey: ['vendor-kitchen', user?.id],
     queryFn: async () => {
-      const { data } = await supabase.from('kitchens').select('id').eq('vendor_id', user?.id).single();
+      const { data } = await supabase.from('kitchens').select('id, upi_id').eq('vendor_id', user?.id).single();
+      if (data && !upiInput && data.upi_id) setUpiInput(data.upi_id);
       return data;
     },
     enabled: !!user?.id,
@@ -19,15 +23,25 @@ export default function VendorLedger() {
   const { data: ledger, isLoading } = useQuery({
     queryKey: ['vendor-ledger', kitchen?.id],
     queryFn: async () => {
-      const { data, error } = await supabase
-        .from('vendor_ledger')
-        .select('*')
-        .eq('kitchen_id', kitchen?.id)
-        .order('created_at', { ascending: false });
+      const { data, error } = await supabase.from('vendor_ledger').select('*').eq('kitchen_id', kitchen?.id).order('created_at', { ascending: false });
       if (error) throw error;
       return data || [];
     },
     enabled: !!kitchen?.id,
+  });
+
+  const updateUpi = useMutation({
+    mutationFn: async () => {
+      const upiRegex = /^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}$/;
+      if (!upiRegex.test(upiInput)) throw new Error("Please enter a valid UPI ID (e.g. name@bank).");
+      const { error } = await supabase.from('kitchens').update({ upi_id: upiInput }).eq('id', kitchen?.id);
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      setUpiModal(false);
+      queryClient.invalidateQueries({ queryKey: ['vendor-kitchen', user?.id] });
+    },
+    onError: (err: any) => Alert.alert('Invalid', err.message)
   });
 
   const availableBalance = ledger?.filter(l => l.status === 'available').reduce((sum, l) => sum + l.amount, 0) || 0;
@@ -41,7 +55,6 @@ export default function VendorLedger() {
       </View>
 
       <ScrollView contentContainerStyle={styles.scroll}>
-        {/* Balances */}
         <View style={styles.balanceGrid}>
           <View style={[styles.balanceCard, styles.availableCard]}>
             <Text style={styles.balanceLabel}>Available for Payout</Text>
@@ -56,15 +69,14 @@ export default function VendorLedger() {
         </View>
 
         {/* Payout Settings */}
-        <View style={styles.payoutCard}>
+        <TouchableOpacity style={styles.payoutCard} onPress={() => setUpiModal(true)}>
           <Text style={styles.payoutTitle}>Payout Settings</Text>
           <View style={styles.payoutRow}>
             <Text style={styles.payoutLabel}>UPI ID:</Text>
             <Text style={styles.payoutValue}>{kitchen?.upi_id || 'Not Set (Tap to add)'}</Text>
           </View>
-        </View>
+        </TouchableOpacity>
 
-        {/* Transaction History */}
         <View style={styles.sectionHeader}>
           <Text style={styles.sectionTitle}>Recent Transactions</Text>
         </View>
@@ -99,6 +111,34 @@ export default function VendorLedger() {
           );
         })}
       </ScrollView>
+
+      {/* UPI Update Modal */}
+      <Modal visible={upiModal} animationType="slide" presentationStyle="formSheet">
+        <View style={{ flex: 1, backgroundColor: '#FFF', padding: 24, paddingTop: 40 }}>
+          <Text style={{ fontSize: 24, fontWeight: '800', marginBottom: 8 }}>Update Payout Settings</Text>
+          <Text style={{ color: '#667085', marginBottom: 24 }}>Enter your UPI ID where you want to receive your T+7 settlements.</Text>
+          
+          <Text style={{ fontSize: 14, fontWeight: '600', marginBottom: 8, color: '#344054' }}>UPI ID</Text>
+          <TextInput 
+            style={{ backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#EAECF0', borderRadius: 12, padding: 16, fontSize: 16 }} 
+            value={upiInput} 
+            onChangeText={setUpiInput} 
+            placeholder="e.g. annapurnatiffins@okhdfcbank" 
+            autoCapitalize="none"
+          />
+
+          <TouchableOpacity 
+            style={{ backgroundColor: '#027A48', padding: 16, borderRadius: 12, alignItems: 'center', marginTop: 24 }} 
+            onPress={() => updateUpi.mutate()} 
+            disabled={updateUpi.isPending}
+          >
+            {updateUpi.isPending ? <ActivityIndicator color="#FFF" /> : <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 16 }}>Save UPI ID</Text>}
+          </TouchableOpacity>
+          <TouchableOpacity style={{ marginTop: 20, alignItems: 'center' }} onPress={() => setUpiModal(false)}>
+            <Text style={{ color: '#667085', fontWeight: '700', fontSize: 16 }}>Cancel</Text>
+          </TouchableOpacity>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }

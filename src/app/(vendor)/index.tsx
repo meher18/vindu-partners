@@ -40,7 +40,12 @@ export default function VendorDashboard() {
     queryKey: ['vendor-menus-dashboard', kitchen?.id],
     queryFn: async () => {
       if (!plans || plans.length === 0) return [];
-      const { data } = await supabase.from('menus').select('subscription_id, effective_date').in('subscription_id', plans.map(p => p.id));
+      const todayStr = new Date().toISOString().split('T')[0];
+      const { data } = await supabase
+        .from('menus')
+        .select('subscription_id, effective_date')
+        .in('subscription_id', plans.map(p => p.id))
+        .gte('effective_date', todayStr);
       return data || [];
     },
     enabled: !!plans && plans.length > 0,
@@ -80,6 +85,10 @@ export default function VendorDashboard() {
 
   const addHoliday = useMutation({
     mutationFn: async () => {
+      const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
+      if (!dateRegex.test(holidayDate)) throw new Error("Date must be in YYYY-MM-DD format.");
+      if (holidayDate < new Date().toISOString().split('T')[0]) throw new Error("You cannot add a holiday in the past.");
+      
       const { error } = await supabase.from('kitchen_holidays').insert([{ kitchen_id: kitchen?.id, holiday_date: holidayDate, reason: holidayReason }]);
       if (error) throw error;
     },
