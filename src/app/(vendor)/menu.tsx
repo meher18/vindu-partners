@@ -221,13 +221,27 @@ export default function VendorMenuPlanner() {
           let pastMenuToCopy = menus.find(m => m.subscription_id === plan.id && m.effective_date === pastStr);
           
           if (!pastMenuToCopy) {
-            // Smart Fallback: If no menu exactly 7 days ago, grab the most recent one for this plan
+            // Smart Fallback 1: Local cache search
             const historicalMenus = menus
               .filter(m => m.subscription_id === plan.id && m.effective_date < targetStr)
               .sort((a, b) => new Date(b.effective_date).getTime() - new Date(a.effective_date).getTime());
             
             if (historicalMenus.length > 0) {
               pastMenuToCopy = historicalMenus[0];
+            } else {
+              // Smart Fallback 2: Deep Server Scan (if vendor hasn't logged in for months)
+              const { data: deepScan } = await supabase
+                .from('menus')
+                .select('*')
+                .eq('subscription_id', plan.id)
+                .lt('effective_date', targetStr)
+                .order('effective_date', { ascending: false })
+                .limit(1)
+                .single();
+              
+              if (deepScan) {
+                pastMenuToCopy = deepScan;
+              }
             }
           }
 
