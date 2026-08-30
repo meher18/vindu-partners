@@ -29,6 +29,7 @@ export default function VendorPlans() {
   const [slotName, setSlotName] = useState<SlotType>('lunch');
   const [price, setPrice] = useState(120);
   const [capacity, setCapacity] = useState(50);
+  const [opDays, setOpDays] = useState<'7-day' | '5-day'>('7-day');
 
   const { data: kitchen } = useQuery({
     queryKey: ['vendor-kitchen', user?.id],
@@ -85,6 +86,7 @@ export default function VendorPlans() {
         vendor_fee: price * 0.8,
         delivery_fee: price * 0.2,
         capacity,
+        operating_days: opDays === '7-day' ? ['mon','tue','wed','thu','fri','sat','sun'] : ['mon','tue','wed','thu','fri'],
         status: 'active'
       }]).select().single();
       if (error) throw error;
@@ -250,6 +252,16 @@ export default function VendorPlans() {
                 <Text style={[styles.chipText, capacity === c && styles.chipTextActive]}>{c}</Text>
               </TouchableOpacity>
             ))}
+          </View>
+
+          <Text style={styles.label}>Operating Days</Text>
+          <View style={styles.chipRow}>
+            <TouchableOpacity style={[styles.chip, opDays === '7-day' && styles.chipActive]} onPress={() => setOpDays('7-day')}>
+              <Text style={[styles.chipText, opDays === '7-day' && styles.chipTextActive]}>7 Days a Week</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.chip, opDays === '5-day' && styles.chipActive]} onPress={() => setOpDays('5-day')}>
+              <Text style={[styles.chipText, opDays === '5-day' && styles.chipTextActive]}>Mon-Fri Only</Text>
+            </TouchableOpacity>
           </View>
 
           <View style={styles.summary}>
