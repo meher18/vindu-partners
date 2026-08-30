@@ -44,17 +44,22 @@ const generateMonthGrid = (targetDate: Date) => {
   }));
 };
 
-const generateDays = () => {
+const generateDays = (anchorDateStr: string) => {
   const days = [];
+  const anchorDate = new Date(anchorDateStr);
+  const todayStr = getLocalISODate(new Date());
+
   for (let i = -3; i <= 10; i++) {
-    const d = new Date();
+    const d = new Date(anchorDate);
     d.setDate(d.getDate() + i);
+    const dStr = getLocalISODate(d);
+    
     days.push({
-      dateStr: getLocalISODate(d),
+      dateStr: dStr,
       dayName: d.toLocaleDateString('en-US', { weekday: 'short' }),
       dayNum: d.getDate(),
-      isToday: i === 0,
-      isPast: i < 0
+      isToday: dStr === todayStr,
+      isPast: dStr < todayStr
     });
   }
   return days;
@@ -67,10 +72,9 @@ export default function VendorMenuPlanner() {
   const queryClient = useQueryClient();
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
-  const daysWindow = generateDays();
   const todayStr = getLocalISODate(new Date());
-
   const [selectedDate, setSelectedDate] = useState(todayStr);
+  const daysWindow = generateDays(selectedDate);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const monthGrid = generateMonthGrid(calendarMonth);
 
