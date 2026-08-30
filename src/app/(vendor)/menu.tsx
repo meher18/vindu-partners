@@ -4,13 +4,19 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
 
+// Helper to get local date string YYYY-MM-DD instead of UTC
+const getLocalISODate = (d: Date) => {
+  const offset = d.getTimezoneOffset() * 60000;
+  return new Date(d.getTime() - offset).toISOString().split('T')[0];
+};
+
 const generateDays = () => {
   const days = [];
   for (let i = -3; i <= 10; i++) {
     const d = new Date();
     d.setDate(d.getDate() + i);
     days.push({
-      dateStr: d.toISOString().split('T')[0],
+      dateStr: getLocalISODate(d),
       dayName: d.toLocaleDateString('en-US', { weekday: 'short' }),
       dayNum: d.getDate(),
       isToday: i === 0,
@@ -26,7 +32,7 @@ export default function VendorMenuPlanner() {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
   const daysWindow = generateDays();
-  const todayStr = new Date().toISOString().split('T')[0];
+  const todayStr = getLocalISODate(new Date());
 
   const [selectedDate, setSelectedDate] = useState(todayStr);
   const [modalVisible, setModalVisible] = useState(false);
@@ -141,9 +147,9 @@ export default function VendorMenuPlanner() {
 
       for (let i = 0; i < 7; i++) {
         const targetDate = new Date(todayObj); targetDate.setDate(targetDate.getDate() + i);
-        const targetStr = targetDate.toISOString().split('T')[0];
+        const targetStr = getLocalISODate(targetDate);
         const pastDate = new Date(targetDate); pastDate.setDate(pastDate.getDate() - 7);
-        const pastStr = pastDate.toISOString().split('T')[0];
+        const pastStr = getLocalISODate(pastDate);
         const targetDayStr = SHORT_DAYS[targetDate.getDay()];
 
         if (holidays?.find(h => h.holiday_date === targetStr)) continue;
@@ -206,7 +212,7 @@ export default function VendorMenuPlanner() {
     if (!editingPlanId || !menus) return;
     const selectedDateObj = new Date(selectedDate);
     selectedDateObj.setDate(selectedDateObj.getDate() - 7);
-    const lastWeekStr = selectedDateObj.toISOString().split('T')[0];
+    const lastWeekStr = getLocalISODate(selectedDateObj);
     const lastWeekDayName = selectedDateObj.toLocaleDateString('en-US', { weekday: 'long' });
     
     const lastWeekMenu = menus.find(m => m.subscription_id === editingPlanId && m.effective_date === lastWeekStr);
