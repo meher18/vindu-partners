@@ -704,9 +704,9 @@ export default function VendorMenuPlanner() {
                     placeholderTextColor="#9CA3AF" 
                     maxLength={60} 
                     autoFocus={(!editingMenuId && index === 0) || (item === '' && index === menuItems.length - 1)}
-                    onSubmitEditing={addItem}
-                    blurOnSubmit={false}
-                    returnKeyType="next"
+                    onSubmitEditing={() => { if (index === menuItems.length - 1 && index < 9) addItem(); }}
+                    blurOnSubmit={index !== menuItems.length - 1 || index === 9}
+                    returnKeyType={index === menuItems.length - 1 && index < 9 ? "next" : "done"}
                   />
                   <TouchableOpacity onPress={() => removeItem(index)} style={styles.removeBtn}><Text style={styles.removeText}>✕</Text></TouchableOpacity>
                 </View>
