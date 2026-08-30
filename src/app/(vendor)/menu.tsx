@@ -257,16 +257,20 @@ export default function VendorMenuPlanner() {
         }
       }
 
-      if (inserts.length === 0) throw new Error("Could not find past menus to copy for the selected plans, or they are already planned/inactive.");
+      if (inserts.length === 0) {
+        return { count: 0, reason: "already_planned" };
+      }
 
       const { error } = await supabase.from('menus').insert(inserts);
       if (error) throw error;
-      return inserts.length;
+      return { count: inserts.length };
     },
-    onSuccess: (count) => {
+    onSuccess: (result: any) => {
       setAutofillModalVisible(false);
-      if (count) {
-        Alert.alert('Success', `Autofilled ${count} menus for the upcoming week!`);
+      if (result?.count === 0) {
+        Alert.alert('All Set!', 'Your selected plans are already fully planned for the upcoming week.');
+      } else if (result?.count > 0) {
+        Alert.alert('Success', `Autofilled ${result.count} menus for the upcoming week!`);
         queryClient.invalidateQueries({ queryKey: ['vendor-menus', kitchen?.id] });
       }
     },
@@ -301,7 +305,7 @@ export default function VendorMenuPlanner() {
     }
   };
 
-  const copyPreviousMenu = () => {
+  const copyPreviousMenu = async () => {
     if (!editingPlanId || !menus) return;
     const selectedDateObj = new Date(selectedDate);
     selectedDateObj.setDate(selectedDateObj.getDate() - 7);
@@ -326,7 +330,22 @@ export default function VendorMenuPlanner() {
           `We didn't find a menu for last ${lastWeekDayName}, so we copied your most recent menu instead.`
         );
       } else {
-        Alert.alert('No History', 'There are no past menus to copy from.');
+        const { data: deepScan } = await supabase
+          .from('menus')
+          .select('*')
+          .eq('subscription_id', editingPlanId)
+          .lt('effective_date', selectedDate)
+          .order('effective_date', { ascending: false })
+          .limit(1)
+          .single();
+          
+        if (deepScan) {
+          setMenuItems(deepScan.items);
+          setMenuNotes(deepScan.notes || '');
+          Alert.alert('Notice', 'We searched your deep archives and copied your most recent menu.');
+        } else {
+          Alert.alert('No History', 'There are no past menus to copy from.');
+        }
       }
     }
   };
