@@ -431,7 +431,7 @@ export default function VendorMenuPlanner() {
           <View style={styles.itemsBlock}>
             {menuItems.map((item, index) => (
               <View key={index} style={styles.inputRow}>
-                <TextInput style={[styles.input, {flex: 1}]} value={item} onChangeText={(val) => updateItem(index, val)} placeholder="e.g. Kadai Paneer" placeholderTextColor="#9CA3AF" autoFocus={index === 0 && !editingMenuId} />
+                <TextInput style={[styles.input, {flex: 1}]} value={item} onChangeText={(val) => updateItem(index, val)} placeholder="e.g. Kadai Paneer" placeholderTextColor="#9CA3AF" maxLength={60} autoFocus={index === 0 && !editingMenuId} />
                 <TouchableOpacity onPress={() => removeItem(index)} style={styles.removeBtn}><Text style={styles.removeText}>✕</Text></TouchableOpacity>
               </View>
             ))}
@@ -444,6 +444,7 @@ export default function VendorMenuPlanner() {
             onChangeText={setMenuNotes} 
             placeholder="e.g. Warning: Contains Peanuts" 
             placeholderTextColor="#9CA3AF" 
+            maxLength={200}
           />
 
           <TouchableOpacity style={styles.saveBtn} onPress={() => submitMenu.mutate()} disabled={submitMenu.isPending}>
