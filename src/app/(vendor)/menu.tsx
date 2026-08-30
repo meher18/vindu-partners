@@ -201,11 +201,23 @@ export default function VendorMenuPlanner() {
   };
 
   const handleEditMeal = (menu: any) => {
-    setEditingPlanId(menu.subscription_id);
-    setEditingMenuId(menu.id);
-    setMenuItems([...menu.items]);
-    setMenuNotes(menu.notes || '');
-    setModalVisible(true);
+    const openModal = () => {
+      setEditingPlanId(menu.subscription_id);
+      setEditingMenuId(menu.id);
+      setMenuItems([...menu.items]);
+      setMenuNotes(menu.notes || '');
+      setModalVisible(true);
+    };
+
+    if (selectedDate === todayStr) {
+      Alert.alert(
+        'Edit Today\'s Menu?',
+        'Customers may have already seen this menu or placed orders based on it. Changing it now could lead to disputes. Are you sure you want to proceed?',
+        [{ text: 'Cancel', style: 'cancel' }, { text: 'Proceed', onPress: openModal, style: 'destructive' }]
+      );
+    } else {
+      openModal();
+    }
   };
 
   const copyPreviousMenu = () => {
@@ -355,9 +367,12 @@ export default function VendorMenuPlanner() {
                         <TouchableOpacity style={styles.editBtn} onPress={() => handleEditMeal(planMenu)}>
                           <Text style={styles.editBtnText}>✏️ Edit Menu</Text>
                         </TouchableOpacity>
-                        <TouchableOpacity style={styles.deleteBtn} onPress={() => Alert.alert('Delete Menu?', 'Remove this menu?', [{text: 'Cancel'}, {text: 'Delete', style: 'destructive', onPress: () => deleteMenu.mutate(planMenu.id)}])}>
-                          <Text style={styles.deleteBtnText}>🗑️</Text>
-                        </TouchableOpacity>
+                        
+                        {selectedDate !== todayStr && (
+                          <TouchableOpacity style={styles.deleteBtn} onPress={() => Alert.alert('Delete Menu?', 'Remove this menu?', [{text: 'Cancel'}, {text: 'Delete', style: 'destructive', onPress: () => deleteMenu.mutate(planMenu.id)}])}>
+                            <Text style={styles.deleteBtnText}>🗑️</Text>
+                          </TouchableOpacity>
+                        )}
                       </View>
                     )}
                   </View>
