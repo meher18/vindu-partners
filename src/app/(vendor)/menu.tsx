@@ -677,7 +677,14 @@ export default function VendorMenuPlanner() {
                 <Text style={styles.overlayTitle}>{calendarMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</Text>
                 <TouchableOpacity onPress={() => setCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}><Text style={{fontSize: 24, color: '#101828'}}>›</Text></TouchableOpacity>
               </View>
-              <TouchableOpacity onPress={() => { setMonthModalVisible(false); setCalendarMonth(new Date()); }}><Text style={styles.closeBtn}>Close</Text></TouchableOpacity>
+              <View style={{flexDirection: 'row', alignItems: 'center', gap: 16}}>
+                <TouchableOpacity onPress={() => setCalendarMonth(new Date(selectedDate))}>
+                  <Text style={{color: '#FF6B6B', fontWeight: '600', fontSize: 13}}>Snap to Selected</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => setMonthModalVisible(false)}>
+                  <Text style={styles.closeBtn}>Close</Text>
+                </TouchableOpacity>
+              </View>
             </View>
             
             <View style={{flexDirection: 'row', marginBottom: 12}}>
