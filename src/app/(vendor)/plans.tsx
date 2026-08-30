@@ -1,19 +1,34 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal, TextInput, ScrollView, Alert, SafeAreaView, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView, Alert, SafeAreaView, ActivityIndicator } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
+
+type DietType = 'veg' | 'non-veg' | 'vegan';
+type SlotType = 'breakfast' | 'lunch' | 'dinner';
+
+const DIET_OPTIONS: { label: string; value: DietType; emoji: string; color: string; bg: string }[] = [
+  { label: 'Veg', value: 'veg', emoji: '🥦', color: '#16A34A', bg: '#F0FDF4' },
+  { label: 'Non-Veg', value: 'non-veg', emoji: '🍗', color: '#DC2626', bg: '#FEF2F2' },
+  { label: 'Vegan', value: 'vegan', emoji: '🌱', color: '#059669', bg: '#ECFDF5' },
+];
+
+const SLOT_OPTIONS: { label: string; value: SlotType; emoji: string; defaultTime: string }[] = [
+  { label: 'Breakfast', value: 'breakfast', emoji: '☀️', defaultTime: '09:00:00' },
+  { label: 'Lunch', value: 'lunch', emoji: '🌤️', defaultTime: '13:00:00' },
+  { label: 'Dinner', value: 'dinner', emoji: '🌙', defaultTime: '20:00:00' },
+];
+
+const PRICE_OPTIONS = [80, 100, 120, 150, 180, 200];
 
 export default function VendorPlans() {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
   const [modalVisible, setModalVisible] = useState(false);
-
-  // Form State
-  const [dietType, setDietType] = useState('veg');
-  const [slotName, setSlotName] = useState('lunch');
-  const [price, setPrice] = useState('120');
-  const [capacity, setCapacity] = useState('50');
+  const [dietType, setDietType] = useState<DietType>('veg');
+  const [slotName, setSlotName] = useState<SlotType>('lunch');
+  const [price, setPrice] = useState(120);
+  const [capacity, setCapacity] = useState(50);
 
   const { data: kitchen } = useQuery({
     queryKey: ['vendor-kitchen', user?.id],
@@ -24,7 +39,7 @@ export default function VendorPlans() {
     enabled: !!user?.id,
   });
 
-  const { data: plans, isLoading } = useQuery({
+  const { data: plans, isLoading, isError, refetch } = useQuery({
     queryKey: ['vendor-plans', kitchen?.id],
     queryFn: async () => {
       const { data, error } = await supabase.from('subscriptions').select('*').eq('kitchen_id', kitchen?.id);
@@ -36,17 +51,18 @@ export default function VendorPlans() {
 
   const createPlan = useMutation({
     mutationFn: async () => {
+      const slotObj = SLOT_OPTIONS.find(s => s.value === slotName)!;
       const { data, error } = await supabase.from('subscriptions').insert([{
         kitchen_id: kitchen?.id,
-        diet_type: dietType.toLowerCase(),
+        diet_type: dietType,
         duration_type: 'monthly',
-        slot_name: slotName.toLowerCase(),
-        slot_target_time: slotName.toLowerCase() === 'dinner' ? '20:00:00' : '13:00:00',
+        slot_name: slotName,
+        slot_target_time: slotObj.defaultTime,
         delivery_type: 'home_delivery',
-        price_per_day: parseFloat(price),
-        vendor_fee: parseFloat(price) * 0.8,
-        delivery_fee: parseFloat(price) * 0.2,
-        capacity: parseInt(capacity),
+        price_per_day: price,
+        vendor_fee: price * 0.8,
+        delivery_fee: price * 0.2,
+        capacity,
         status: 'active'
       }]).select().single();
       if (error) throw error;
@@ -56,11 +72,19 @@ export default function VendorPlans() {
       setModalVisible(false);
       queryClient.invalidateQueries({ queryKey: ['vendor-plans', kitchen?.id] });
     },
-    onError: (err) => Alert.alert('Error', err.message)
+    onError: (err: any) => {
+      if (err.message?.includes('unique_plan_per_kitchen')) {
+        Alert.alert('Duplicate Plan', `You already have a ${dietType} ${slotName} plan. Please create a different combination.`);
+      } else {
+        Alert.alert('Error', err.message);
+      }
+    }
   });
 
+  const selectedDiet = DIET_OPTIONS.find(d => d.value === dietType)!;
+
   return (
-    <SafeAreaView style={styles.safeArea}>
+    <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
         <View>
           <Text style={styles.title}>Meal Plans</Text>
@@ -72,81 +96,136 @@ export default function VendorPlans() {
       </View>
 
       <ScrollView contentContainerStyle={styles.list}>
-        {isLoading && <ActivityIndicator style={{marginTop: 40}} color="#FF6B6B" />}
-        {plans?.length === 0 && (
+        {isLoading && <ActivityIndicator style={{ marginTop: 40 }} color="#FF6B35" />}
+        {isError && (
+          <View style={styles.errorWrap}>
+            <Text style={styles.errorEmoji}>⚠️</Text>
+            <Text style={styles.errorText}>Failed to load plans</Text>
+            <TouchableOpacity onPress={() => refetch()} style={styles.retryBtn}>
+              <Text style={styles.retryText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {!isLoading && plans?.length === 0 && (
           <View style={styles.emptyState}>
             <Text style={styles.emptyIcon}>🍽️</Text>
             <Text style={styles.emptyTitle}>No Meal Plans Yet</Text>
             <Text style={styles.emptySub}>Create your first plan to start receiving orders.</Text>
             <TouchableOpacity style={styles.emptyBtn} onPress={() => setModalVisible(true)}>
-              <Text style={styles.emptyBtnText}>Create Plan</Text>
+              <Text style={styles.emptyBtnText}>Create Your First Plan</Text>
             </TouchableOpacity>
           </View>
         )}
-        
-        {plans?.map((plan) => (
-          <View key={plan.id} style={styles.card}>
-            <View style={styles.cardHeader}>
-              <View style={[styles.dietBadge, plan.diet_type === 'veg' ? styles.badgeVeg : styles.badgeNonVeg]}>
-                <Text style={[styles.badgeText, plan.diet_type === 'veg' ? styles.badgeTextVeg : styles.badgeTextNonVeg]}>
-                  {plan.diet_type.toUpperCase()}
-                </Text>
+
+        {plans?.map((plan: any) => {
+          const diet = DIET_OPTIONS.find(d => d.value === plan.diet_type);
+          const slot = SLOT_OPTIONS.find(s => s.value === plan.slot_name);
+          return (
+            <View key={plan.id} style={styles.card}>
+              <View style={styles.cardHeader}>
+                <View style={[styles.dietBadge, { backgroundColor: diet?.bg }]}>
+                  <Text>{diet?.emoji}</Text>
+                  <Text style={[styles.badgeText, { color: diet?.color }]}>{plan.diet_type.toUpperCase()}</Text>
+                </View>
+                <Text style={styles.price}>₹{plan.price_per_day}<Text style={styles.perDay}>/day</Text></Text>
               </View>
-              <Text style={styles.price}>₹{plan.price_per_day} <Text style={styles.perDay}>/day</Text></Text>
+              <Text style={styles.planTitle}>{slot?.emoji} {plan.slot_name.toUpperCase()} PLAN</Text>
+              <View style={styles.cardFooter}>
+                <View style={styles.footerItem}>
+                  <Text style={styles.footerLabel}>Capacity</Text>
+                  <Text style={styles.footerValue}>{plan.capacity} meals</Text>
+                </View>
+                <View style={styles.footerItem}>
+                  <Text style={styles.footerLabel}>Target Time</Text>
+                  <Text style={styles.footerValue}>{plan.slot_target_time?.slice(0, 5)}</Text>
+                </View>
+                <View style={styles.footerItem}>
+                  <Text style={styles.footerLabel}>Your Share</Text>
+                  <Text style={styles.footerValue}>₹{plan.vendor_fee}/day</Text>
+                </View>
+              </View>
             </View>
-            <Text style={styles.planTitle}>{plan.slot_name.toUpperCase()} PLAN</Text>
-            
-            <View style={styles.cardFooter}>
-              <View style={styles.footerItem}>
-                <Text style={styles.footerLabel}>Capacity</Text>
-                <Text style={styles.footerValue}>{plan.capacity} meals</Text>
-              </View>
-              <View style={styles.footerItem}>
-                <Text style={styles.footerLabel}>Target Time</Text>
-                <Text style={styles.footerValue}>{plan.slot_target_time.slice(0, 5)}</Text>
-              </View>
-            </View>
-          </View>
-        ))}
+          );
+        })}
       </ScrollView>
 
       {/* CREATE PLAN MODAL */}
       <Modal visible={modalVisible} animationType="slide" presentationStyle="formSheet">
         <View style={styles.modalHeader}>
           <Text style={styles.modalTitle}>New Meal Plan</Text>
-          <TouchableOpacity onPress={() => setModalVisible(false)}><Text style={styles.closeBtn}>Close</Text></TouchableOpacity>
+          <TouchableOpacity onPress={() => setModalVisible(false)}><Text style={styles.closeBtn}>Cancel</Text></TouchableOpacity>
         </View>
-        
         <ScrollView style={styles.modalContainer}>
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Diet Type (veg, non-veg, vegan)</Text>
-            <TextInput style={styles.input} value={dietType} onChangeText={setDietType} />
-          </View>
-          
-          <View style={styles.inputGroup}>
-            <Text style={styles.label}>Slot (lunch, dinner)</Text>
-            <TextInput style={styles.input} value={slotName} onChangeText={setSlotName} />
-          </View>
-
-          <View style={styles.rowGrid}>
-            <View style={[styles.inputGroup, { flex: 1 }]}>
-              <Text style={styles.label}>Price / Day (₹)</Text>
-              <TextInput style={styles.input} value={price} onChangeText={setPrice} keyboardType="numeric" />
-            </View>
-            <View style={{ width: 16 }} />
-            <View style={[styles.inputGroup, { flex: 1 }]}>
-              <Text style={styles.label}>Max Capacity</Text>
-              <TextInput style={styles.input} value={capacity} onChangeText={setCapacity} keyboardType="numeric" />
-            </View>
+          {/* Diet Type */}
+          <Text style={styles.label}>Diet Type</Text>
+          <View style={styles.chipRow}>
+            {DIET_OPTIONS.map(opt => (
+              <TouchableOpacity
+                key={opt.value}
+                style={[styles.chip, dietType === opt.value && { backgroundColor: opt.bg, borderColor: opt.color }]}
+                onPress={() => setDietType(opt.value)}
+              >
+                <Text>{opt.emoji}</Text>
+                <Text style={[styles.chipText, dietType === opt.value && { color: opt.color, fontWeight: '700' }]}>{opt.label}</Text>
+              </TouchableOpacity>
+            ))}
           </View>
 
-          <TouchableOpacity 
-            style={styles.saveBtn} 
-            onPress={() => createPlan.mutate()} 
-            disabled={createPlan.isPending}
-          >
+          {/* Slot */}
+          <Text style={styles.label}>Meal Slot</Text>
+          <View style={styles.chipRow}>
+            {SLOT_OPTIONS.map(opt => (
+              <TouchableOpacity
+                key={opt.value}
+                style={[styles.chip, slotName === opt.value && styles.chipActive]}
+                onPress={() => setSlotName(opt.value)}
+              >
+                <Text>{opt.emoji}</Text>
+                <Text style={[styles.chipText, slotName === opt.value && styles.chipTextActive]}>{opt.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* Price */}
+          <Text style={styles.label}>Price per Day (₹)</Text>
+          <View style={styles.chipRow}>
+            {PRICE_OPTIONS.map(p => (
+              <TouchableOpacity
+                key={p}
+                style={[styles.chip, price === p && styles.chipActive]}
+                onPress={() => setPrice(p)}
+              >
+                <Text style={[styles.chipText, price === p && styles.chipTextActive]}>₹{p}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+          <Text style={styles.priceNote}>Your share: ₹{(price * 0.8).toFixed(0)} · Delivery: ₹{(price * 0.2).toFixed(0)}</Text>
+
+          {/* Capacity */}
+          <Text style={styles.label}>Daily Capacity (meals)</Text>
+          <View style={styles.chipRow}>
+            {[20, 30, 50, 75, 100].map(c => (
+              <TouchableOpacity
+                key={c}
+                style={[styles.chip, capacity === c && styles.chipActive]}
+                onPress={() => setCapacity(c)}
+              >
+                <Text style={[styles.chipText, capacity === c && styles.chipTextActive]}>{c}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          {/* Summary */}
+          <View style={styles.summary}>
+            <Text style={styles.summaryTitle}>Plan Summary</Text>
+            <Text style={styles.summaryText}>{selectedDiet.emoji} {dietType} {slotName} at ₹{price}/day for {capacity} customers</Text>
+          </View>
+
+          <TouchableOpacity style={styles.saveBtn} onPress={() => createPlan.mutate()} disabled={createPlan.isPending}>
             {createPlan.isPending ? <ActivityIndicator color="#FFF" /> : <Text style={styles.saveBtnText}>Save Plan</Text>}
           </TouchableOpacity>
+          <View style={{ height: 40 }} />
         </ScrollView>
       </Modal>
     </SafeAreaView>
@@ -154,44 +233,49 @@ export default function VendorPlans() {
 }
 
 const styles = StyleSheet.create({
-  safeArea: { flex: 1, backgroundColor: '#F7F9FC' },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 24, paddingVertical: 20, backgroundColor: '#FFFFFF', borderBottomWidth: 1, borderBottomColor: '#F2F4F7' },
+  safe: { flex: 1, backgroundColor: '#F7F9FC' },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 24, paddingVertical: 20, backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#F2F4F7' },
   title: { fontSize: 24, fontWeight: '800', color: '#101828' },
   subtitle: { fontSize: 14, color: '#667085', marginTop: 2 },
   addButton: { backgroundColor: '#FF6B6B', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20 },
   addButtonText: { color: '#FFF', fontWeight: '700', fontSize: 14 },
   list: { padding: 24 },
-  
-  emptyState: { alignItems: 'center', justifyContent: 'center', marginTop: 60, padding: 32, backgroundColor: '#FFF', borderRadius: 24, shadowColor: '#101828', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 12, elevation: 2 },
+  errorWrap: { alignItems: 'center', paddingVertical: 40 },
+  errorEmoji: { fontSize: 40, marginBottom: 12 },
+  errorText: { fontSize: 16, color: '#374151', marginBottom: 16 },
+  retryBtn: { backgroundColor: '#FF6B6B', paddingHorizontal: 20, paddingVertical: 10, borderRadius: 12 },
+  retryText: { color: '#FFF', fontWeight: '700' },
+  emptyState: { alignItems: 'center', justifyContent: 'center', marginTop: 40, padding: 32, backgroundColor: '#FFF', borderRadius: 24, shadowColor: '#101828', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 12, elevation: 2 },
   emptyIcon: { fontSize: 48, marginBottom: 16 },
   emptyTitle: { fontSize: 20, fontWeight: '700', color: '#101828', marginBottom: 8 },
   emptySub: { fontSize: 15, color: '#667085', textAlign: 'center', marginBottom: 24, lineHeight: 22 },
-  emptyBtn: { backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#EAECF0', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 },
-  emptyBtnText: { fontWeight: '600', color: '#344054' },
-
-  card: { backgroundColor: '#FFFFFF', padding: 24, borderRadius: 24, marginBottom: 16, shadowColor: '#101828', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 12, elevation: 3 },
+  emptyBtn: { backgroundColor: '#FF6B6B', paddingHorizontal: 24, paddingVertical: 14, borderRadius: 14 },
+  emptyBtnText: { fontWeight: '700', color: '#FFF' },
+  card: { backgroundColor: '#FFF', padding: 24, borderRadius: 24, marginBottom: 16, shadowColor: '#101828', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 12, elevation: 3 },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 },
-  dietBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
-  badgeVeg: { backgroundColor: '#ECFDF3' },
-  badgeTextVeg: { color: '#027A48', fontSize: 12, fontWeight: '700' },
-  badgeNonVeg: { backgroundColor: '#FEF3F2' },
-  badgeTextNonVeg: { color: '#B42318', fontSize: 12, fontWeight: '700' },
+  dietBadge: { flexDirection: 'row', gap: 6, alignItems: 'center', paddingHorizontal: 10, paddingVertical: 5, borderRadius: 8 },
+  badgeText: { fontSize: 12, fontWeight: '700' },
   price: { fontSize: 22, fontWeight: '900', color: '#101828' },
   perDay: { fontSize: 14, color: '#667085', fontWeight: '500' },
   planTitle: { fontSize: 18, fontWeight: '800', color: '#344054', marginBottom: 20 },
   cardFooter: { flexDirection: 'row', borderTopWidth: 1, borderTopColor: '#F2F4F7', paddingTop: 16 },
   footerItem: { flex: 1 },
   footerLabel: { fontSize: 12, color: '#98A2B3', fontWeight: '600', textTransform: 'uppercase', marginBottom: 4 },
-  footerValue: { fontSize: 15, color: '#101828', fontWeight: '600' },
-  
+  footerValue: { fontSize: 14, color: '#101828', fontWeight: '600' },
   modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 24, paddingTop: 24, paddingBottom: 16, backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#F2F4F7' },
   modalTitle: { fontSize: 20, fontWeight: '800', color: '#101828' },
   closeBtn: { fontSize: 16, color: '#667085', fontWeight: '600' },
   modalContainer: { flex: 1, backgroundColor: '#FFF', padding: 24 },
-  inputGroup: { marginBottom: 20 },
-  rowGrid: { flexDirection: 'row' },
-  label: { fontSize: 13, fontWeight: '600', color: '#344054', marginBottom: 8, textTransform: 'uppercase', letterSpacing: 0.5 },
-  input: { backgroundColor: '#F9FAFB', borderWidth: 1, borderColor: '#EAECF0', borderRadius: 12, paddingHorizontal: 16, paddingVertical: 14, fontSize: 16, color: '#101828' },
-  saveBtn: { backgroundColor: '#FF6B6B', borderRadius: 12, paddingVertical: 16, alignItems: 'center', marginTop: 12, marginBottom: 40 },
+  label: { fontSize: 13, fontWeight: '700', color: '#344054', marginBottom: 12, marginTop: 20, textTransform: 'uppercase', letterSpacing: 0.5 },
+  chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  chip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: '#F9FAFB', borderRadius: 12, borderWidth: 1.5, borderColor: '#EAECF0' },
+  chipActive: { backgroundColor: '#FEF0EC', borderColor: '#FF6B6B' },
+  chipText: { fontSize: 14, color: '#667085', fontWeight: '600' },
+  chipTextActive: { color: '#FF6B6B', fontWeight: '700' },
+  priceNote: { fontSize: 13, color: '#667085', marginTop: 10, fontStyle: 'italic' },
+  summary: { backgroundColor: '#F9FAFB', padding: 20, borderRadius: 16, marginTop: 24 },
+  summaryTitle: { fontSize: 14, fontWeight: '700', color: '#344054', marginBottom: 8 },
+  summaryText: { fontSize: 15, color: '#667085', lineHeight: 22 },
+  saveBtn: { backgroundColor: '#FF6B6B', borderRadius: 14, paddingVertical: 16, alignItems: 'center', marginTop: 24 },
   saveBtnText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
 });

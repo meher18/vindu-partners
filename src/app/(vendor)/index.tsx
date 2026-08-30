@@ -90,6 +90,15 @@ export default function VendorDashboard() {
           </View>
         </View>
 
+        {(kitchen.status ?? 'pending') === 'pending' && (
+          <View style={styles.pendingBanner}>
+            <Text style={styles.pendingBannerText}>
+              🔍 Your kitchen is under review. Once approved by the Vindu team, customers can discover you.
+            </Text>
+          </View>
+        )}
+
+
         <View style={styles.statsGrid}>
           <View style={styles.statCard}>
             <Text style={styles.statLabel}>Today's Orders</Text>
@@ -147,6 +156,8 @@ const styles = StyleSheet.create({
   statusText: { fontSize: 12, fontWeight: '700' },
   statusTextActive: { color: '#027A48' },
   statusTextPending: { color: '#B54708' },
+  pendingBanner: { backgroundColor: '#FFFAEB', padding: 16, borderRadius: 12, marginBottom: 24, borderWidth: 1, borderColor: '#FEF0C7' },
+  pendingBannerText: { color: '#B54708', fontSize: 14, lineHeight: 20 },
   
   statsGrid: { flexDirection: 'row', gap: 16, marginBottom: 24 },
   statCard: { flex: 1, backgroundColor: '#FFFFFF', padding: 20, borderRadius: 20, shadowColor: '#101828', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 12, elevation: 3 },
