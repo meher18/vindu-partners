@@ -628,7 +628,9 @@ export default function VendorMenuPlanner() {
               {plans?.find(p => p.id === editingPlanId)?.slot_name.toUpperCase()} • {displayDate}
             </Text>
           </View>
-          <TouchableOpacity onPress={() => setModalVisible(false)}><Text style={styles.closeBtn}>Cancel</Text></TouchableOpacity>
+          <TouchableOpacity onPress={() => setModalVisible(false)} disabled={submitMenu.isPending}>
+            <Text style={[styles.closeBtn, submitMenu.isPending && { opacity: 0.5 }]}>Cancel</Text>
+          </TouchableOpacity>
         </View>
         <ScrollView style={styles.modalContainer} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
           <View style={styles.itemsHeaderRow}>
@@ -751,8 +753,8 @@ export default function VendorMenuPlanner() {
             </View>
 
             <View style={styles.overlayActionRow}>
-              <TouchableOpacity style={styles.overlayCancelBtn} onPress={() => setAutofillModalVisible(false)}>
-                <Text style={styles.overlayCancelText}>Cancel</Text>
+              <TouchableOpacity style={styles.overlayCancelBtn} onPress={() => setAutofillModalVisible(false)} disabled={autofillWeek.isPending}>
+                <Text style={[styles.overlayCancelText, autofillWeek.isPending && { opacity: 0.5 }]}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity style={styles.overlayConfirmBtn} onPress={() => autofillWeek.mutate()} disabled={autofillWeek.isPending}>
                 {autofillWeek.isPending ? <ActivityIndicator color="#FFF" /> : <Text style={styles.overlayConfirmText}>Run Autofill</Text>}
