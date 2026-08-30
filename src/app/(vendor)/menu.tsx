@@ -98,6 +98,13 @@ export default function VendorMenuPlanner() {
 
   const [autofillModalVisible, setAutofillModalVisible] = useState(false);
   const [selectedAutofillPlans, setSelectedAutofillPlans] = useState<Record<string, boolean>>({});
+  const [focusedInputIndex, setFocusedInputIndex] = useState<number | null>(null);
+
+  const selectSuggestion = (index: number, suggestion: string) => {
+    Vibration.vibrate(50);
+    updateItem(index, suggestion);
+    if (index === menuItems.length - 1 && index < 9) addItem();
+  };
 
   const scrollViewRef = useRef<ScrollView>(null);
 
@@ -124,6 +131,22 @@ export default function VendorMenuPlanner() {
       return data || [];
     },
     enabled: !!kitchen?.id,
+  });
+  const { data: dishHistory } = useQuery({
+    queryKey: ['vendor-dish-history', kitchen?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('menus').select('menu_items').eq('kitchen_id', kitchen?.id);
+      if (!data) return [];
+      const counts: Record<string, number> = {};
+      data.forEach(m => {
+        (m.menu_items || []).forEach((d: string) => {
+          const clean = d.trim();
+          if (clean) counts[clean] = (counts[clean] || 0) + 1;
+        });
+      });
+      return Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 20).map(e => e[0]);
+    },
+    enabled: !!kitchen?.id
   });
 
   const { data: menus, isLoading: mLoading, isError: mError } = useQuery({
@@ -710,23 +733,45 @@ export default function VendorMenuPlanner() {
             </View>
 
             <View style={styles.itemsBlock}>
-              {menuItems.map((item, index) => (
-                <View key={index} style={styles.inputRow}>
-                  <TextInput 
-                    style={[styles.input, {flex: 1}]} 
-                    value={item} 
-                    onChangeText={(val) => updateItem(index, val)} 
-                    placeholder="e.g. Kadai Paneer" 
-                    placeholderTextColor="#9CA3AF" 
-                    maxLength={60} 
-                    autoFocus={(!editingMenuId && index === 0) || (item === '' && index === menuItems.length - 1)}
-                    onSubmitEditing={() => { if (index === menuItems.length - 1 && index < 9) addItem(); }}
-                    blurOnSubmit={index !== menuItems.length - 1 || index === 9}
-                    returnKeyType={index === menuItems.length - 1 && index < 9 ? "next" : "done"}
-                  />
-                  <TouchableOpacity onPress={() => removeItem(index)} style={styles.removeBtn}><Text style={styles.removeText}>✕</Text></TouchableOpacity>
-                </View>
-              ))}
+              {menuItems.map((item, index) => {
+                const showSuggestions = focusedInputIndex === index && dishHistory && dishHistory.length > 0;
+                const filteredSuggestions = showSuggestions ? dishHistory.filter((d: string) => d.toLowerCase().includes(item.toLowerCase()) && d.toLowerCase() !== item.toLowerCase()) : [];
+
+                return (
+                  <View key={index} style={{ gap: 8 }}>
+                    <View style={styles.inputRow}>
+                      <TextInput 
+                        style={[styles.input, {flex: 1}]} 
+                        value={item} 
+                        onChangeText={(val) => updateItem(index, val)} 
+                        placeholder="e.g. Kadai Paneer" 
+                        placeholderTextColor="#9CA3AF" 
+                        maxLength={60} 
+                        autoFocus={(!editingMenuId && index === 0) || (item === '' && index === menuItems.length - 1)}
+                        onFocus={() => setFocusedInputIndex(index)}
+                        onSubmitEditing={() => { if (index === menuItems.length - 1 && index < 9) addItem(); }}
+                        blurOnSubmit={index !== menuItems.length - 1 || index === 9}
+                        returnKeyType={index === menuItems.length - 1 && index < 9 ? "next" : "done"}
+                      />
+                      <TouchableOpacity onPress={() => removeItem(index)} style={styles.removeBtn}><Text style={styles.removeText}>✕</Text></TouchableOpacity>
+                    </View>
+                    
+                    {filteredSuggestions.length > 0 && (
+                      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginLeft: 4 }} keyboardShouldPersistTaps="handled">
+                        {filteredSuggestions.map((suggestion: string, sIdx: number) => (
+                          <TouchableOpacity 
+                            key={sIdx} 
+                            style={{ backgroundColor: '#FFF', borderWidth: 1, borderColor: '#EAECF0', paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20, marginRight: 8 }}
+                            onPress={() => selectSuggestion(index, suggestion)}
+                          >
+                            <Text style={{ fontSize: 13, color: '#344054', fontWeight: '500' }}>{suggestion}</Text>
+                          </TouchableOpacity>
+                        ))}
+                      </ScrollView>
+                    )}
+                  </View>
+                );
+              })}
             </View>
 
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' }}>
