@@ -163,13 +163,25 @@ export default function VendorMenuPlanner() {
           const existingTarget = menus.find(m => m.subscription_id === plan.id && m.effective_date === targetStr);
           if (existingTarget) continue;
 
-          const pastMenu = menus.find(m => m.subscription_id === plan.id && m.effective_date === pastStr);
-          if (pastMenu) {
+          let pastMenuToCopy = menus.find(m => m.subscription_id === plan.id && m.effective_date === pastStr);
+          
+          if (!pastMenuToCopy) {
+            // Smart Fallback: If no menu exactly 7 days ago, grab the most recent one for this plan
+            const historicalMenus = menus
+              .filter(m => m.subscription_id === plan.id && m.effective_date < targetStr)
+              .sort((a, b) => new Date(b.effective_date).getTime() - new Date(a.effective_date).getTime());
+            
+            if (historicalMenus.length > 0) {
+              pastMenuToCopy = historicalMenus[0];
+            }
+          }
+
+          if (pastMenuToCopy) {
             inserts.push({
               subscription_id: plan.id,
               effective_date: targetStr,
-              items: pastMenu.items,
-              notes: pastMenu.notes || null,
+              items: pastMenuToCopy.items,
+              notes: pastMenuToCopy.notes || null,
               status: 'active'
             });
           }
