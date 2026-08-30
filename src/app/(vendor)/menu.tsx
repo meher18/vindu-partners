@@ -104,8 +104,8 @@ export default function VendorMenuPlanner() {
   useEffect(() => {
     setTimeout(() => {
       scrollViewRef.current?.scrollTo({ x: 3 * 70, animated: true });
-    }, 100);
-  }, []);
+    }, 50);
+  }, [selectedDate]);
 
   const { data: kitchen, isLoading: kLoading } = useQuery({
     queryKey: ['vendor-kitchen', user?.id],
