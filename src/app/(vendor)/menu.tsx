@@ -56,12 +56,14 @@ const generateMonthGrid = (targetDate: Date) => {
 
 const generateDays = (anchorDateStr: string) => {
   const days = [];
-  const anchorDate = new Date(anchorDateStr);
+  const anchor = parseLocalDate(anchorDateStr);
   const todayStr = getLocalISODate(new Date());
 
   for (let i = -3; i <= 10; i++) {
-    const d = new Date(anchorDate);
-    d.setDate(d.getDate() + i);
+    // Construct each day by adding to year/month/date integers, not by mutating
+    // a Date object. This prevents DST-transition days from shifting by ±1 hour
+    // and causing getDate() to return the wrong value near midnight boundaries.
+    const d = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate() + i);
     const dStr = getLocalISODate(d);
     
     days.push({
