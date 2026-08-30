@@ -1,5 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, ActivityIndicator, Modal, TextInput, Alert, Switch, RefreshControl, Vibration } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, ActivityIndicator, Modal, TextInput, Alert, Switch, RefreshControl, Vibration, LayoutAnimation, UIManager, Platform } from 'react-native';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
@@ -329,6 +333,8 @@ export default function VendorMenuPlanner() {
     const lastWeekMenu = menus.find(m => m.subscription_id === editingPlanId && m.effective_date === lastWeekStr);
     
     if (lastWeekMenu) {
+      Vibration.vibrate(50);
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       setMenuItems(lastWeekMenu.items);
       setMenuNotes(lastWeekMenu.notes || '');
     } else {
@@ -337,6 +343,8 @@ export default function VendorMenuPlanner() {
         .sort((a, b) => new Date(b.effective_date).getTime() - new Date(a.effective_date).getTime());
         
       if (pastMenus.length > 0) {
+        Vibration.vibrate(50);
+        LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
         setMenuItems(pastMenus[0].items);
         setMenuNotes(pastMenus[0].notes || '');
         Alert.alert(
@@ -354,6 +362,8 @@ export default function VendorMenuPlanner() {
           .single();
           
         if (deepScan) {
+          Vibration.vibrate(50);
+          LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
           setMenuItems(deepScan.items);
           setMenuNotes(deepScan.notes || '');
           Alert.alert('Notice', 'We searched your deep archives and copied your most recent menu.');
@@ -374,9 +384,20 @@ export default function VendorMenuPlanner() {
   const updateItem = (index: number, val: string) => {
     const newArr = [...menuItems]; newArr[index] = val; setMenuItems(newArr);
   };
+  
+  const addItem = () => {
+    if (menuItems.length < 10) {
+      Vibration.vibrate(50);
+      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+      setMenuItems([...menuItems, '']);
+    }
+  };
+
   const removeItem = (index: number) => {
     Vibration.vibrate(50);
-    const newArr = menuItems.filter((_, i) => i !== index); setMenuItems(newArr.length ? newArr : ['']);
+    LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+    const newArr = menuItems.filter((_, i) => i !== index); 
+    setMenuItems(newArr.length ? newArr : ['']);
   };
   
   const toggleAutofillPlan = (planId: string) => {
@@ -641,7 +662,7 @@ export default function VendorMenuPlanner() {
             <View style={{ flexDirection: 'row', gap: 12 }}>
               <TouchableOpacity onPress={copyPreviousMenu} style={styles.copyBtnWrap}><Text style={styles.copyLink}>📋 Copy Previous</Text></TouchableOpacity>
               {menuItems.length < 10 && (
-                <TouchableOpacity onPress={() => { Vibration.vibrate(50); setMenuItems([...menuItems, '']); }} style={styles.addBtnWrap}><Text style={styles.addItemLink}>+ Add Dish</Text></TouchableOpacity>
+                <TouchableOpacity onPress={addItem} style={styles.addBtnWrap}><Text style={styles.addItemLink}>+ Add Dish</Text></TouchableOpacity>
               )}
             </View>
           </View>
