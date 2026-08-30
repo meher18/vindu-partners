@@ -424,8 +424,8 @@ export default function VendorMenuPlanner() {
   const onRefresh = React.useCallback(async () => {
     setRefreshing(true);
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: ['vendor-plans', kitchen?.id] }),
-      queryClient.invalidateQueries({ queryKey: ['vendor-menus', kitchen?.id] })
+      queryClient.refetchQueries({ queryKey: ['vendor-plans', kitchen?.id] }),
+      queryClient.refetchQueries({ queryKey: ['vendor-menus', kitchen?.id] })
     ]);
     setRefreshing(false);
   }, [kitchen?.id, queryClient]);
@@ -766,7 +766,7 @@ export default function VendorMenuPlanner() {
               </TouchableOpacity>
             </View>
             
-            <View style={styles.switchesContainer}>
+            <ScrollView style={[styles.switchesContainer, { maxHeight: 300 }]}>
               {plans?.filter(p => p.status === 'active').map(plan => (
                 <View key={plan.id} style={styles.switchRow}>
                   <Text style={styles.switchLabel}>{plan.diet_type.toUpperCase()} {plan.slot_name.toUpperCase()}</Text>
@@ -777,7 +777,7 @@ export default function VendorMenuPlanner() {
                   />
                 </View>
               ))}
-            </View>
+            </ScrollView>
 
             <View style={styles.overlayActionRow}>
               <TouchableOpacity style={styles.overlayCancelBtn} onPress={() => setAutofillModalVisible(false)} disabled={autofillWeek.isPending}>
