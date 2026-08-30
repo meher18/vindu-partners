@@ -217,20 +217,70 @@ export default function VendorMenuPlanner() {
       
       if (error) throw new Error(error.message);
     },
-    onSuccess: () => {
+    onMutate: async () => {
+      const filteredItems = menuItems.map(item => item.trim()).filter(item => item !== '');
+      if (filteredItems.length === 0) return;
+      
+      const queryKey = ['vendor-menus', kitchen?.id, calendarMonth.getFullYear(), calendarMonth.getMonth()];
+      await queryClient.cancelQueries({ queryKey });
+      const previousMenus = queryClient.getQueryData(queryKey);
+
+      const optimisticMenu = {
+        id: editingMenuId || `temp-${Date.now()}`,
+        subscription_id: editingPlanId,
+        effective_date: selectedDate,
+        items: filteredItems,
+        notes: menuNotes.trim() || null,
+        status: 'active'
+      };
+
+      queryClient.setQueryData(queryKey, (old: any) => {
+        if (!old) return [optimisticMenu];
+        const exists = old.findIndex((m: any) => (m.subscription_id === editingPlanId && m.effective_date === selectedDate) || m.id === optimisticMenu.id);
+        if (exists >= 0) {
+          const next = [...old];
+          next[exists] = optimisticMenu;
+          return next;
+        }
+        return [...old, optimisticMenu];
+      });
+      
       setModalVisible(false);
       setMenuNotes('');
-      queryClient.invalidateQueries({ queryKey: ['vendor-menus', kitchen?.id] });
+      return { previousMenus, queryKey };
     },
-    onError: (err: any) => Alert.alert('Error', err.message)
+    onError: (err: any, variables, context: any) => {
+      if (context?.previousMenus) queryClient.setQueryData(context.queryKey, context.previousMenus);
+      Alert.alert('Error', err.message);
+      setModalVisible(true);
+    },
+    onSettled: (data, error, variables, context: any) => {
+      if (context?.queryKey) queryClient.invalidateQueries({ queryKey: context.queryKey });
+    }
   });
 
   const deleteMenu = useMutation({
     mutationFn: async (id: string) => {
       await supabase.from('menus').delete().eq('id', id);
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['vendor-menus', kitchen?.id] }),
-    onError: (err: any) => Alert.alert('Error', err.message)
+    onMutate: async (id: string) => {
+      const queryKey = ['vendor-menus', kitchen?.id, calendarMonth.getFullYear(), calendarMonth.getMonth()];
+      await queryClient.cancelQueries({ queryKey });
+      const previousMenus = queryClient.getQueryData(queryKey);
+      
+      queryClient.setQueryData(queryKey, (old: any) => {
+        if (!old) return [];
+        return old.filter((m: any) => m.id !== id);
+      });
+      return { previousMenus, queryKey };
+    },
+    onError: (err: any, variables, context: any) => {
+      if (context?.previousMenus) queryClient.setQueryData(context.queryKey, context.previousMenus);
+      Alert.alert('Error', err.message);
+    },
+    onSettled: (data, error, variables, context: any) => {
+      if (context?.queryKey) queryClient.invalidateQueries({ queryKey: context.queryKey });
+    }
   });
 
   const autofillWeek = useMutation({
