@@ -10,6 +10,40 @@ const getLocalISODate = (d: Date) => {
   return new Date(d.getTime() - offset).toISOString().split('T')[0];
 };
 
+const generateMonthGrid = () => {
+  const targetDate = new Date();
+  const year = targetDate.getFullYear();
+  const month = targetDate.getMonth();
+  
+  const firstDay = new Date(year, month, 1);
+  const lastDay = new Date(year, month + 1, 0);
+  
+  const days = [];
+  const startOffset = firstDay.getDay(); 
+  
+  for (let i = startOffset - 1; i >= 0; i--) {
+    days.push({ date: new Date(year, month, -i), isCurrentMonth: false });
+  }
+  
+  for (let i = 1; i <= lastDay.getDate(); i++) {
+    days.push({ date: new Date(year, month, i), isCurrentMonth: true });
+  }
+  
+  const remaining = days.length % 7;
+  if (remaining !== 0) {
+    for (let i = 1; i <= 7 - remaining; i++) {
+      days.push({ date: new Date(year, month + 1, i), isCurrentMonth: false });
+    }
+  }
+  
+  return days.map(d => ({
+    dateStr: getLocalISODate(d.date),
+    dayNum: d.date.getDate(),
+    dayName: d.date.toLocaleDateString('en-US', { weekday: 'short' }),
+    isCurrentMonth: d.isCurrentMonth
+  }));
+};
+
 const generateDays = () => {
   const days = [];
   for (let i = -3; i <= 10; i++) {
@@ -32,10 +66,12 @@ export default function VendorMenuPlanner() {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
   const daysWindow = generateDays();
+  const monthGrid = generateMonthGrid();
   const todayStr = getLocalISODate(new Date());
 
   const [selectedDate, setSelectedDate] = useState(todayStr);
   const [modalVisible, setModalVisible] = useState(false);
+  const [monthModalVisible, setMonthModalVisible] = useState(false);
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
   const [editingMenuId, setEditingMenuId] = useState<string | null>(null);
   const [menuItems, setMenuItems] = useState<string[]>(['']);
@@ -75,12 +111,14 @@ export default function VendorMenuPlanner() {
     queryKey: ['vendor-menus', kitchen?.id],
     queryFn: async () => {
       if (!plans || plans.length === 0) return [];
+      const startD = new Date(); startD.setDate(startD.getDate() - 30);
+      const endD = new Date(); endD.setDate(endD.getDate() + 45);
       const { data } = await supabase
         .from('menus')
         .select('*')
         .in('subscription_id', plans.map(p => p.id))
-        .gte('effective_date', daysWindow[0].dateStr)
-        .lte('effective_date', daysWindow[daysWindow.length - 1].dateStr);
+        .gte('effective_date', getLocalISODate(startD))
+        .lte('effective_date', getLocalISODate(endD));
       return data || [];
     },
     enabled: !!plans && plans.length > 0,
@@ -302,7 +340,12 @@ export default function VendorMenuPlanner() {
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
-        <Text style={styles.title}>Weekly Planner</Text>
+        <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
+          <Text style={styles.title}>Planner</Text>
+          <TouchableOpacity onPress={() => setMonthModalVisible(true)} style={{padding: 8, backgroundColor: '#F9FAFB', borderRadius: 8}}>
+            <Text style={{fontSize: 16}}>📅</Text>
+          </TouchableOpacity>
+        </View>
         <TouchableOpacity style={styles.autofillBtn} onPress={() => setAutofillModalVisible(true)}>
           <Text style={styles.autofillBtnText}>🪄 Autofill Week</Text>
         </TouchableOpacity>
@@ -482,6 +525,45 @@ export default function VendorMenuPlanner() {
           </TouchableOpacity>
           <View style={{ height: 40 }} />
         </ScrollView>
+      </Modal>
+
+      {/* MONTH GRID MODAL */}
+      <Modal visible={monthModalVisible} animationType="fade" transparent>
+        <View style={styles.overlay}>
+          <View style={styles.overlayCard}>
+            <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24}}>
+              <Text style={styles.overlayTitle}>Monthly Overview</Text>
+              <TouchableOpacity onPress={() => setMonthModalVisible(false)}><Text style={styles.closeBtn}>Close</Text></TouchableOpacity>
+            </View>
+            
+            <View style={{flexDirection: 'row', marginBottom: 12}}>
+              {SHORT_DAYS.map(d => <Text key={d} style={{flex: 1, textAlign: 'center', fontSize: 11, fontWeight: '700', color: '#667085'}}>{d.toUpperCase()}</Text>)}
+            </View>
+
+            <View style={{flexDirection: 'row', flexWrap: 'wrap'}}>
+              {monthGrid.map((day, idx) => {
+                const dayStatus = getDayStatus(day.dateStr, day.dayName.toLowerCase());
+                return (
+                  <TouchableOpacity 
+                    key={idx} 
+                    style={[{width: '14.28%', aspectRatio: 1, padding: 2, alignItems: 'center', justifyContent: 'center'}, !day.isCurrentMonth && {opacity: 0.3}]}
+                    onPress={() => { setSelectedDate(day.dateStr); setMonthModalVisible(false); }}
+                  >
+                    <View style={[{width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center'}, day.dateStr === todayStr && {backgroundColor: '#FEF2F2'}]}>
+                       <Text style={[{fontSize: 14, fontWeight: '600', color: '#101828'}, day.dateStr === selectedDate && {color: '#FF6B6B', fontWeight: '800'}]}>{day.dayNum}</Text>
+                       <View style={{flexDirection: 'row', position: 'absolute', bottom: 2}}>
+                         {dayStatus === 'holiday' && <Text style={{fontSize: 8}}>🏖️</Text>}
+                         {dayStatus === 'unplanned' && <View style={{width: 4, height: 4, borderRadius: 2, backgroundColor: '#DC2626'}} />}
+                         {dayStatus === 'partial' && <View style={{width: 4, height: 4, borderRadius: 2, backgroundColor: '#F59E0B'}} />}
+                         {dayStatus === 'planned' && <View style={{width: 4, height: 4, borderRadius: 2, backgroundColor: '#10B981'}} />}
+                       </View>
+                    </View>
+                  </TouchableOpacity>
+                )
+              })}
+            </View>
+          </View>
+        </View>
       </Modal>
 
       {/* AUTOFILL CONFIG MODAL */}
