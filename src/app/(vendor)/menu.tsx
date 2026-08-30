@@ -608,6 +608,9 @@ export default function VendorMenuPlanner() {
                                   <Text style={styles.dishText}>{item}</Text>
                                 </View>
                               ))}
+                              {planMenu.notes ? (
+                                <Text style={styles.notesText}>Chef's Note: {planMenu.notes}</Text>
+                              ) : null}
                               {!isSelectedPast && (
                                 <View style={styles.actionRow}>
                                   <TouchableOpacity style={styles.editBtn} onPress={() => handleEditMeal(planMenu)}>
@@ -848,7 +851,7 @@ const styles = StyleSheet.create({
   planActionText: { color: '#FFF', fontWeight: '700', fontSize: 14 },
   pastUnplannedText: { color: '#B91C1C', fontSize: 14, fontStyle: 'italic' },
   
-  emptyState: { alignItems: 'center', padding: 40, backgroundColor: '#FFF', borderRadius: 24 },
+  emptyState: { alignItems: 'center', padding: 40, backgroundColor: '#F9FAFB', borderRadius: 24, borderWidth: 2, borderColor: '#EAECF0', borderStyle: 'dashed' },
   emptyIcon: { fontSize: 40, marginBottom: 16 },
   emptyTitle: { fontSize: 18, fontWeight: '700', color: '#101828', marginBottom: 8 },
   emptySub: { fontSize: 14, color: '#667085', textAlign: 'center', lineHeight: 22 },
