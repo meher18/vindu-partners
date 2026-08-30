@@ -10,8 +10,7 @@ const getLocalISODate = (d: Date) => {
   return new Date(d.getTime() - offset).toISOString().split('T')[0];
 };
 
-const generateMonthGrid = () => {
-  const targetDate = new Date();
+const generateMonthGrid = (targetDate: Date) => {
   const year = targetDate.getFullYear();
   const month = targetDate.getMonth();
   
@@ -66,10 +65,12 @@ export default function VendorMenuPlanner() {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
   const daysWindow = generateDays();
-  const monthGrid = generateMonthGrid();
   const todayStr = getLocalISODate(new Date());
 
   const [selectedDate, setSelectedDate] = useState(todayStr);
+  const [calendarMonth, setCalendarMonth] = useState(new Date());
+  const monthGrid = generateMonthGrid(calendarMonth);
+
   const [modalVisible, setModalVisible] = useState(false);
   const [monthModalVisible, setMonthModalVisible] = useState(false);
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
@@ -108,17 +109,28 @@ export default function VendorMenuPlanner() {
   });
 
   const { data: menus, isLoading: mLoading } = useQuery({
-    queryKey: ['vendor-menus', kitchen?.id],
+    queryKey: ['vendor-menus', kitchen?.id, calendarMonth.getFullYear(), calendarMonth.getMonth()],
     queryFn: async () => {
       if (!plans || plans.length === 0) return [];
-      const startD = new Date(); startD.setDate(startD.getDate() - 30);
-      const endD = new Date(); endD.setDate(endD.getDate() + 45);
+      
+      const stripStart = new Date(); stripStart.setDate(stripStart.getDate() - 3);
+      const stripEnd = new Date(); stripEnd.setDate(stripEnd.getDate() + 10);
+      
+      const gridStart = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1);
+      const gridEnd = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0);
+
+      const minDate = new Date(Math.min(stripStart.getTime(), gridStart.getTime()));
+      minDate.setDate(minDate.getDate() - 7); 
+
+      const maxDate = new Date(Math.max(stripEnd.getTime(), gridEnd.getTime()));
+      maxDate.setDate(maxDate.getDate() + 7);
+
       const { data } = await supabase
         .from('menus')
         .select('*')
         .in('subscription_id', plans.map(p => p.id))
-        .gte('effective_date', getLocalISODate(startD))
-        .lte('effective_date', getLocalISODate(endD));
+        .gte('effective_date', getLocalISODate(minDate))
+        .lte('effective_date', getLocalISODate(maxDate));
       return data || [];
     },
     enabled: !!plans && plans.length > 0,
@@ -532,8 +544,12 @@ export default function VendorMenuPlanner() {
         <View style={styles.overlay}>
           <View style={styles.overlayCard}>
             <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24}}>
-              <Text style={styles.overlayTitle}>Monthly Overview</Text>
-              <TouchableOpacity onPress={() => setMonthModalVisible(false)}><Text style={styles.closeBtn}>Close</Text></TouchableOpacity>
+              <View style={{flexDirection: 'row', alignItems: 'center', gap: 16}}>
+                <TouchableOpacity onPress={() => setCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() - 1, 1))}><Text style={{fontSize: 24, color: '#101828'}}>‹</Text></TouchableOpacity>
+                <Text style={styles.overlayTitle}>{calendarMonth.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}</Text>
+                <TouchableOpacity onPress={() => setCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}><Text style={{fontSize: 24, color: '#101828'}}>›</Text></TouchableOpacity>
+              </View>
+              <TouchableOpacity onPress={() => { setMonthModalVisible(false); setCalendarMonth(new Date()); }}><Text style={styles.closeBtn}>Close</Text></TouchableOpacity>
             </View>
             
             <View style={{flexDirection: 'row', marginBottom: 12}}>
