@@ -1,10 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, ActivityIndicator, Modal, TextInput, Alert, Animated } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, ActivityIndicator, Modal, TextInput, Alert, Switch } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
 
-// Generate a 14-day window (-3 days to +10 days)
 const generateDays = () => {
   const days = [];
   for (let i = -3; i <= 10; i++) {
@@ -21,6 +20,8 @@ const generateDays = () => {
   return days;
 };
 
+const SHORT_DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
+
 export default function VendorMenuPlanner() {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
@@ -34,10 +35,12 @@ export default function VendorMenuPlanner() {
   const [menuItems, setMenuItems] = useState<string[]>(['']);
   const [menuNotes, setMenuNotes] = useState('');
 
+  const [autofillModalVisible, setAutofillModalVisible] = useState(false);
+  const [selectedAutofillPlans, setSelectedAutofillPlans] = useState<Record<string, boolean>>({});
+
   const scrollViewRef = useRef<ScrollView>(null);
 
   useEffect(() => {
-    // Scroll to today on mount
     setTimeout(() => {
       scrollViewRef.current?.scrollTo({ x: 3 * 70, animated: true });
     }, 100);
@@ -55,13 +58,13 @@ export default function VendorMenuPlanner() {
   const { data: plans, isLoading: pLoading } = useQuery({
     queryKey: ['vendor-plans', kitchen?.id],
     queryFn: async () => {
-      const { data } = await supabase.from('subscriptions').select('*').eq('kitchen_id', kitchen?.id).neq('status', 'cancelled');
+      // We must fetch ALL plans (even cancelled) so we can display their historical menus.
+      const { data } = await supabase.from('subscriptions').select('*').eq('kitchen_id', kitchen?.id);
       return data || [];
     },
     enabled: !!kitchen?.id,
   });
 
-  // Fetch menus for the 14 day window
   const { data: menus, isLoading: mLoading } = useQuery({
     queryKey: ['vendor-menus', kitchen?.id],
     queryFn: async () => {
@@ -77,10 +80,28 @@ export default function VendorMenuPlanner() {
     enabled: !!plans && plans.length > 0,
   });
 
+  const { data: holidays } = useQuery({
+    queryKey: ['vendor-holidays', kitchen?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('kitchen_holidays').select('*').eq('kitchen_id', kitchen?.id);
+      return data || [];
+    },
+    enabled: !!kitchen?.id,
+  });
+
+  useEffect(() => {
+    if (plans && Object.keys(selectedAutofillPlans).length === 0) {
+      const defaultSelection: Record<string, boolean> = {};
+      plans.forEach(p => defaultSelection[p.id] = true);
+      setSelectedAutofillPlans(defaultSelection);
+    }
+  }, [plans]);
+
   const submitMenu = useMutation({
     mutationFn: async () => {
       const filteredItems = menuItems.filter(item => item.trim() !== '');
       if (filteredItems.length === 0) throw new Error("Please add at least one menu item.");
+      if (filteredItems.length > 10) throw new Error("Maximum 10 items allowed per menu.");
 
       if (editingMenuId) {
         const { error } = await supabase.from('menus').update({ items: filteredItems, notes: menuNotes }).eq('id', editingMenuId);
@@ -108,7 +129,61 @@ export default function VendorMenuPlanner() {
     mutationFn: async (id: string) => {
       await supabase.from('menus').delete().eq('id', id);
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['vendor-menus', kitchen?.id] })
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['vendor-menus', kitchen?.id] }),
+    onError: (err: any) => Alert.alert('Error', err.message)
+  });
+
+  const autofillWeek = useMutation({
+    mutationFn: async () => {
+      if (!plans || plans.length === 0 || !menus) return;
+      const inserts = [];
+      const todayObj = new Date(todayStr);
+
+      for (let i = 0; i < 7; i++) {
+        const targetDate = new Date(todayObj); targetDate.setDate(targetDate.getDate() + i);
+        const targetStr = targetDate.toISOString().split('T')[0];
+        const pastDate = new Date(targetDate); pastDate.setDate(pastDate.getDate() - 7);
+        const pastStr = pastDate.toISOString().split('T')[0];
+        const targetDayStr = SHORT_DAYS[targetDate.getDay()];
+
+        if (holidays?.find(h => h.holiday_date === targetStr)) continue;
+
+        for (const plan of plans) {
+          if (!selectedAutofillPlans[plan.id]) continue;
+          
+          // CRITICAL: Do not autofill on days the plan is not operating
+          if (plan.operating_days && !plan.operating_days.includes(targetDayStr)) continue;
+
+          const existingTarget = menus.find(m => m.subscription_id === plan.id && m.effective_date === targetStr);
+          if (existingTarget) continue;
+
+          const pastMenu = menus.find(m => m.subscription_id === plan.id && m.effective_date === pastStr);
+          if (pastMenu) {
+            inserts.push({
+              subscription_id: plan.id,
+              effective_date: targetStr,
+              items: pastMenu.items,
+              notes: pastMenu.notes || null,
+              status: 'active'
+            });
+          }
+        }
+      }
+
+      if (inserts.length === 0) throw new Error("Could not find past menus to copy for the selected plans, or they are already planned/inactive.");
+
+      const { error } = await supabase.from('menus').insert(inserts);
+      if (error) throw error;
+      return inserts.length;
+    },
+    onSuccess: (count) => {
+      setAutofillModalVisible(false);
+      if (count) {
+        Alert.alert('Success', `Autofilled ${count} menus for the upcoming week!`);
+        queryClient.invalidateQueries({ queryKey: ['vendor-menus', kitchen?.id] });
+      }
+    },
+    onError: (err: any) => Alert.alert('Autofill Status', err.message)
   });
 
   const handlePlanMeal = (planId: string) => {
@@ -129,85 +204,50 @@ export default function VendorMenuPlanner() {
 
   const copyPreviousMenu = () => {
     if (!editingPlanId || !menus) return;
-    
-    // Calculate the date exactly 7 days before the selectedDate
     const selectedDateObj = new Date(selectedDate);
     selectedDateObj.setDate(selectedDateObj.getDate() - 7);
     const lastWeekStr = selectedDateObj.toISOString().split('T')[0];
-
+    const lastWeekDayName = selectedDateObj.toLocaleDateString('en-US', { weekday: 'long' });
+    
     const lastWeekMenu = menus.find(m => m.subscription_id === editingPlanId && m.effective_date === lastWeekStr);
     
     if (lastWeekMenu) {
       setMenuItems(lastWeekMenu.items);
       setMenuNotes(lastWeekMenu.notes || '');
     } else {
-      // Fallback: If no menu exactly 7 days ago, grab the most recent one overall
       const pastMenus = menus
         .filter(m => m.subscription_id === editingPlanId && m.effective_date < selectedDate)
         .sort((a, b) => new Date(b.effective_date).getTime() - new Date(a.effective_date).getTime());
-      
+        
       if (pastMenus.length > 0) {
         setMenuItems(pastMenus[0].items);
         setMenuNotes(pastMenus[0].notes || '');
+        Alert.alert(
+          'Notice', 
+          `We didn't find a menu for last ${lastWeekDayName}, so we copied your most recent menu instead.`
+        );
       } else {
         Alert.alert('No History', 'There are no past menus to copy from.');
       }
     }
   };
 
-  const autofillWeek = useMutation({
-    mutationFn: async () => {
-      if (!plans || plans.length === 0 || !menus) return;
-      const inserts = [];
-      const todayObj = new Date(todayStr);
-
-      for (let i = 0; i < 7; i++) {
-        const targetDate = new Date(todayObj); targetDate.setDate(targetDate.getDate() + i);
-        const targetStr = targetDate.toISOString().split('T')[0];
-        const pastDate = new Date(targetDate); pastDate.setDate(pastDate.getDate() - 7);
-        const pastStr = pastDate.toISOString().split('T')[0];
-
-        for (const plan of plans) {
-          const existingTarget = menus.find(m => m.subscription_id === plan.id && m.effective_date === targetStr);
-          if (existingTarget) continue;
-
-          const pastMenu = menus.find(m => m.subscription_id === plan.id && m.effective_date === pastStr);
-          if (pastMenu) {
-            inserts.push({
-              subscription_id: plan.id,
-              effective_date: targetStr,
-              items: pastMenu.items,
-              notes: pastMenu.notes,
-              status: 'active'
-            });
-          }
-        }
-      }
-
-      if (inserts.length === 0) throw new Error("No past menus found to copy, or your upcoming week is already fully planned!");
-
-      const { error } = await supabase.from('menus').insert(inserts);
-      if (error) throw error;
-      return inserts.length;
-    },
-    onSuccess: (count) => {
-      if (count) {
-        Alert.alert('Success', `Autofilled ${count} menus for the upcoming week based on your past week's rotation!`);
-        queryClient.invalidateQueries({ queryKey: ['vendor-menus', kitchen?.id] });
-      }
-    },
-    onError: (err: any) => Alert.alert('Autofill Status', err.message)
-  });
-
   const selectedDateObj = new Date(selectedDate);
   const displayDate = selectedDateObj.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  const displayDayNameFull = selectedDateObj.toLocaleDateString('en-US', { weekday: 'long' });
+  const selectedDayStr = SHORT_DAYS[selectedDateObj.getDay()];
   const isSelectedPast = selectedDate < todayStr;
+  const isHoliday = holidays?.find(h => h.holiday_date === selectedDate);
 
   const updateItem = (index: number, val: string) => {
     const newArr = [...menuItems]; newArr[index] = val; setMenuItems(newArr);
   };
   const removeItem = (index: number) => {
     const newArr = menuItems.filter((_, i) => i !== index); setMenuItems(newArr.length ? newArr : ['']);
+  };
+  
+  const toggleAutofillPlan = (planId: string) => {
+    setSelectedAutofillPlans(prev => ({ ...prev, [planId]: !prev[planId] }));
   };
 
   if (kLoading || pLoading) return <View style={styles.center}><ActivityIndicator size="large" color="#FF6B6B" /></View>;
@@ -216,12 +256,11 @@ export default function VendorMenuPlanner() {
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
         <Text style={styles.title}>Weekly Planner</Text>
-        <TouchableOpacity style={styles.autofillBtn} onPress={() => autofillWeek.mutate()} disabled={autofillWeek.isPending}>
-          {autofillWeek.isPending ? <ActivityIndicator color="#FFF" size="small" /> : <Text style={styles.autofillBtnText}>🪄 Autofill Week</Text>}
+        <TouchableOpacity style={styles.autofillBtn} onPress={() => setAutofillModalVisible(true)}>
+          <Text style={styles.autofillBtnText}>🪄 Autofill Week</Text>
         </TouchableOpacity>
       </View>
 
-      {/* HORIZONTAL CALENDAR STRIP */}
       <View style={styles.calendarContainer}>
         <ScrollView ref={scrollViewRef} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.calendarScroll}>
           {daysWindow.map((day) => {
@@ -241,15 +280,14 @@ export default function VendorMenuPlanner() {
         </ScrollView>
       </View>
 
-      {/* DAILY CHECKLIST */}
       <ScrollView contentContainerStyle={styles.body}>
         <Text style={styles.dateHeading}>{isSelectedPast ? 'Historical Menu' : 'Plan for'} {displayDate}</Text>
 
-        {holidays?.find(h => h.holiday_date === selectedDate) ? (
+        {isHoliday ? (
           <View style={styles.holidayState}>
             <Text style={styles.holidayEmoji}>🏖️</Text>
             <Text style={styles.holidayTitle}>Kitchen Closed</Text>
-            <Text style={styles.holidaySub}>You marked this day as a holiday ({holidays.find(h => h.holiday_date === selectedDate).reason}). Customers will not expect meals.</Text>
+            <Text style={styles.holidaySub}>You marked this day as a holiday ({isHoliday.reason}). Customers will not expect meals.</Text>
           </View>
         ) : !plans || plans.length === 0 ? (
           <View style={styles.emptyState}>
@@ -258,9 +296,31 @@ export default function VendorMenuPlanner() {
             <Text style={styles.emptySub}>Create a meal plan first (like "Veg Lunch") before you can schedule a daily menu.</Text>
           </View>
         ) : (
-          plans.map(plan => {
+          plans.filter(plan => {
+            // For historical days, only show this plan if a menu was actually published for it.
+            // For future days, only show ACTIVE plans.
+            const hasMenu = menus?.some(m => m.subscription_id === plan.id && m.effective_date === selectedDate);
+            if (isSelectedPast) return hasMenu;
+            return plan.status === 'active';
+          }).map(plan => {
+            // CRITICAL: Check if the plan is supposed to operate today!
+            const isOperatingToday = plan.operating_days ? plan.operating_days.includes(selectedDayStr) : true;
+
             const planMenu = menus?.find(m => m.subscription_id === plan.id && m.effective_date === selectedDate);
             const isPlanned = !!planMenu;
+
+            if (!isOperatingToday) {
+              return (
+                <View key={plan.id} style={[styles.planCard, styles.cardInactive]}>
+                  <View style={styles.planHeader}>
+                    <Text style={styles.planTitleInactive}>{plan.diet_type.toUpperCase()} {plan.slot_name.toUpperCase()}</Text>
+                    <View style={styles.badgeInactive}>
+                      <Text style={styles.statusTextInactive}>⏸️ Inactive on {displayDayNameFull}s</Text>
+                    </View>
+                  </View>
+                </View>
+              );
+            }
 
             return (
               <View key={plan.id} style={[styles.planCard, isPlanned ? styles.cardPlanned : styles.cardUnplanned]}>
@@ -312,7 +372,7 @@ export default function VendorMenuPlanner() {
         )}
       </ScrollView>
 
-      {/* SIMPLIFIED SMART MODAL */}
+      {/* PLAN MENU MODAL */}
       <Modal visible={modalVisible} animationType="slide" presentationStyle="formSheet">
         <View style={styles.modalHeader}>
           <View>
@@ -325,8 +385,10 @@ export default function VendorMenuPlanner() {
           <View style={styles.itemsHeaderRow}>
             <Text style={styles.label}>Menu Items</Text>
             <View style={{ flexDirection: 'row', gap: 12 }}>
-              <TouchableOpacity onPress={copyPreviousMenu}><Text style={styles.copyLink}>📋 Copy last {selectedDateObj.toLocaleDateString('en-US', { weekday: 'short' })}</Text></TouchableOpacity>
-              <TouchableOpacity onPress={() => setMenuItems([...menuItems, ''])}><Text style={styles.addItemLink}>+ Add Dish</Text></TouchableOpacity>
+              <TouchableOpacity onPress={copyPreviousMenu} style={styles.copyBtnWrap}><Text style={styles.copyLink}>📋 Copy Previous</Text></TouchableOpacity>
+              {menuItems.length < 10 && (
+                <TouchableOpacity onPress={() => setMenuItems([...menuItems, ''])} style={styles.addBtnWrap}><Text style={styles.addItemLink}>+ Add Dish</Text></TouchableOpacity>
+              )}
             </View>
           </View>
 
@@ -353,6 +415,38 @@ export default function VendorMenuPlanner() {
           </TouchableOpacity>
           <View style={{ height: 40 }} />
         </ScrollView>
+      </Modal>
+
+      {/* AUTOFILL CONFIG MODAL */}
+      <Modal visible={autofillModalVisible} animationType="fade" transparent>
+        <View style={styles.overlay}>
+          <View style={styles.overlayCard}>
+            <Text style={styles.overlayTitle}>Autofill Settings</Text>
+            <Text style={styles.overlaySub}>Select which plans you want to automatically roll over from last week.</Text>
+            
+            <View style={styles.switchesContainer}>
+              {plans?.filter(p => p.status === 'active').map(plan => (
+                <View key={plan.id} style={styles.switchRow}>
+                  <Text style={styles.switchLabel}>{plan.diet_type.toUpperCase()} {plan.slot_name.toUpperCase()}</Text>
+                  <Switch 
+                    value={!!selectedAutofillPlans[plan.id]} 
+                    onValueChange={() => toggleAutofillPlan(plan.id)} 
+                    trackColor={{ true: '#FF6B6B', false: '#EAECF0' }}
+                  />
+                </View>
+              ))}
+            </View>
+
+            <View style={styles.overlayActionRow}>
+              <TouchableOpacity style={styles.overlayCancelBtn} onPress={() => setAutofillModalVisible(false)}>
+                <Text style={styles.overlayCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={styles.overlayConfirmBtn} onPress={() => autofillWeek.mutate()} disabled={autofillWeek.isPending}>
+                {autofillWeek.isPending ? <ActivityIndicator color="#FFF" /> : <Text style={styles.overlayConfirmText}>Run Autofill</Text>}
+              </TouchableOpacity>
+            </View>
+          </View>
+        </View>
       </Modal>
     </SafeAreaView>
   );
@@ -382,15 +476,19 @@ const styles = StyleSheet.create({
   planCard: { borderRadius: 20, padding: 20, marginBottom: 16, borderWidth: 1 },
   cardPlanned: { backgroundColor: '#FFF', borderColor: '#EAECF0', shadowColor: '#101828', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 6, elevation: 2 },
   cardUnplanned: { backgroundColor: '#FEF2F2', borderColor: '#FEE2E2', borderStyle: 'dashed' },
+  cardInactive: { backgroundColor: '#F9FAFB', borderColor: '#EAECF0' },
   
   planHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   planTitle: { fontSize: 16, fontWeight: '800', color: '#101828' },
+  planTitleInactive: { fontSize: 16, fontWeight: '800', color: '#9CA3AF' },
   statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
   badgePlanned: { backgroundColor: '#ECFDF3' },
   badgeUnplanned: { backgroundColor: '#FFF' },
+  badgeInactive: { backgroundColor: '#F2F4F7', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
   statusText: { fontSize: 12, fontWeight: '700' },
   statusTextPlanned: { color: '#027A48' },
   statusTextUnplanned: { color: '#DC2626' },
+  statusTextInactive: { color: '#667085', fontSize: 12, fontWeight: '600' },
   
   plannedContent: {},
   dishRowDisplay: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
@@ -416,14 +514,21 @@ const styles = StyleSheet.create({
 
   holidayState: { alignItems: 'center', padding: 40, backgroundColor: '#FEF0EC', borderRadius: 24, borderWidth: 1, borderColor: '#FEE2E2' },
   holidayEmoji: { fontSize: 40, marginBottom: 16 },
+  holidayTitle: { fontSize: 18, fontWeight: '700', color: '#991B1B', marginBottom: 8 },
+  holidaySub: { fontSize: 14, color: '#B91C1C', textAlign: 'center', lineHeight: 22 },
+
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 24, paddingTop: 24, paddingBottom: 16, backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#F2F4F7' },
+  modalTitle: { fontSize: 20, fontWeight: '800', color: '#101828' },
   modalSub: { fontSize: 13, color: '#667085', marginTop: 2, fontWeight: '500' },
   closeBtn: { fontSize: 16, color: '#667085', fontWeight: '600' },
   modalContainer: { flex: 1, backgroundColor: '#FFF', padding: 24 },
   
   itemsHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   label: { fontSize: 14, fontWeight: '700', color: '#344054' },
-  addItemLink: { color: '#FF6B6B', fontWeight: '700', fontSize: 14 },
-  copyLink: { color: '#101828', fontWeight: '700', fontSize: 14 },
+  copyBtnWrap: { backgroundColor: '#F0F9FF', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
+  addBtnWrap: { backgroundColor: '#FEF2F2', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8 },
+  addItemLink: { color: '#FF6B6B', fontWeight: '700', fontSize: 13 },
+  copyLink: { color: '#026AA2', fontWeight: '700', fontSize: 13 },
   
   itemsBlock: { backgroundColor: '#F9FAFB', padding: 16, borderRadius: 16, borderWidth: 1, borderColor: '#EAECF0', marginBottom: 24, gap: 12 },
   inputRow: { flexDirection: 'row', alignItems: 'center', gap: 12 },
@@ -433,4 +538,17 @@ const styles = StyleSheet.create({
   
   saveBtn: { backgroundColor: '#FF6B6B', borderRadius: 16, paddingVertical: 16, alignItems: 'center' },
   saveBtnText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
+
+  overlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 },
+  overlayCard: { backgroundColor: '#FFF', width: '100%', borderRadius: 24, padding: 24, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.1, shadowRadius: 20 },
+  overlayTitle: { fontSize: 20, fontWeight: '800', color: '#101828', marginBottom: 8 },
+  overlaySub: { fontSize: 14, color: '#667085', marginBottom: 24, lineHeight: 20 },
+  switchesContainer: { backgroundColor: '#F9FAFB', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#EAECF0', marginBottom: 24 },
+  switchRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: 1, borderBottomColor: '#F2F4F7' },
+  switchLabel: { fontSize: 15, fontWeight: '600', color: '#344054' },
+  overlayActionRow: { flexDirection: 'row', gap: 12 },
+  overlayCancelBtn: { flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: 'center', backgroundColor: '#F2F4F7' },
+  overlayCancelText: { fontSize: 15, fontWeight: '700', color: '#344054' },
+  overlayConfirmBtn: { flex: 1, paddingVertical: 14, borderRadius: 12, alignItems: 'center', backgroundColor: '#FF6B6B' },
+  overlayConfirmText: { fontSize: 15, fontWeight: '700', color: '#FFF' },
 });
