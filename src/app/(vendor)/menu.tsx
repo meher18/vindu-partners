@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, ActivityIndicator, Modal, TextInput, Alert, Switch, RefreshControl, Vibration, LayoutAnimation, UIManager, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, ActivityIndicator, Modal, TextInput, Alert, Switch, RefreshControl, Vibration, LayoutAnimation, UIManager, Platform, KeyboardAvoidingView } from 'react-native';
 
 if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
   UIManager.setLayoutAnimationEnabledExperimental(true);
@@ -647,64 +647,67 @@ export default function VendorMenuPlanner() {
 
       {/* PLAN MENU MODAL */}
       <Modal visible={modalVisible} animationType="slide" presentationStyle="formSheet" onRequestClose={() => setModalVisible(false)}>
-        <View style={styles.modalHeader}>
-          <View>
-            <Text style={styles.modalTitle}>{editingMenuId ? 'Edit Menu' : 'Plan Menu'}</Text>
-            <Text style={styles.modalSub}>
-              {plans?.find(p => p.id === editingPlanId)?.diet_type.toUpperCase()}{' '}
-              {plans?.find(p => p.id === editingPlanId)?.slot_name.toUpperCase()} • {displayDate}
-            </Text>
-          </View>
-          <TouchableOpacity onPress={() => setModalVisible(false)} disabled={submitMenu.isPending}>
-            <Text style={[styles.closeBtn, submitMenu.isPending && { opacity: 0.5 }]}>Cancel</Text>
-          </TouchableOpacity>
-        </View>
-        <ScrollView style={styles.modalContainer} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
-          <View style={styles.itemsHeaderRow}>
-            <Text style={styles.label}>Menu Items</Text>
-            <View style={{ flexDirection: 'row', gap: 12 }}>
-              <TouchableOpacity onPress={copyPreviousMenu} style={styles.copyBtnWrap}><Text style={styles.copyLink}>📋 Copy Previous</Text></TouchableOpacity>
-              {menuItems.length < 10 && (
-                <TouchableOpacity onPress={addItem} style={styles.addBtnWrap}><Text style={styles.addItemLink}>+ Add Dish</Text></TouchableOpacity>
-              )}
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+          <View style={styles.modalHeader}>
+            <View>
+              <Text style={styles.modalTitle}>{editingMenuId ? 'Edit Menu' : 'Plan Menu'}</Text>
+              <Text style={styles.modalSub}>
+                {plans?.find(p => p.id === editingPlanId)?.diet_type.toUpperCase()}{' '}
+                {plans?.find(p => p.id === editingPlanId)?.slot_name.toUpperCase()} • {displayDate}
+              </Text>
             </View>
+            <TouchableOpacity onPress={() => setModalVisible(false)} disabled={submitMenu.isPending}>
+              <Text style={[styles.closeBtn, submitMenu.isPending && { opacity: 0.5 }]}>Cancel</Text>
+            </TouchableOpacity>
           </View>
-
-          <View style={styles.itemsBlock}>
-            {menuItems.map((item, index) => (
-              <View key={index} style={styles.inputRow}>
-                <TextInput 
-                  style={[styles.input, {flex: 1}]} 
-                  value={item} 
-                  onChangeText={(val) => updateItem(index, val)} 
-                  placeholder="e.g. Kadai Paneer" 
-                  placeholderTextColor="#9CA3AF" 
-                  maxLength={60} 
-                  autoFocus={(!editingMenuId && index === 0) || (item === '' && index === menuItems.length - 1)}
-                  onSubmitEditing={addItem}
-                  blurOnSubmit={false}
-                  returnKeyType="next"
-                />
-                <TouchableOpacity onPress={() => removeItem(index)} style={styles.removeBtn}><Text style={styles.removeText}>✕</Text></TouchableOpacity>
+          <ScrollView style={styles.modalContainer} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+            <View style={styles.itemsHeaderRow}>
+              <Text style={styles.label}>Menu Items</Text>
+              <View style={{ flexDirection: 'row', gap: 12 }}>
+                <TouchableOpacity onPress={copyPreviousMenu} style={styles.copyBtnWrap}><Text style={styles.copyLink}>📋 Copy Previous</Text></TouchableOpacity>
+                {menuItems.length < 10 && (
+                  <TouchableOpacity onPress={addItem} style={styles.addBtnWrap}><Text style={styles.addItemLink}>+ Add Dish</Text></TouchableOpacity>
+                )}
               </View>
-            ))}
+            </View>
+
+            <View style={styles.itemsBlock}>
+              {menuItems.map((item, index) => (
+                <View key={index} style={styles.inputRow}>
+                  <TextInput 
+                    style={[styles.input, {flex: 1}]} 
+                    value={item} 
+                    onChangeText={(val) => updateItem(index, val)} 
+                    placeholder="e.g. Kadai Paneer" 
+                    placeholderTextColor="#9CA3AF" 
+                    maxLength={60} 
+                    autoFocus={(!editingMenuId && index === 0) || (item === '' && index === menuItems.length - 1)}
+                    onSubmitEditing={addItem}
+                    blurOnSubmit={false}
+                    returnKeyType="next"
+                  />
+                  <TouchableOpacity onPress={() => removeItem(index)} style={styles.removeBtn}><Text style={styles.removeText}>✕</Text></TouchableOpacity>
+                </View>
+              ))}
+            </View>
+
+            <Text style={styles.label}>Chef's Note (Optional)</Text>
+            <TextInput 
+              style={[styles.input, { marginBottom: 24, marginTop: 12 }]} 
+              value={menuNotes} 
+              onChangeText={setMenuNotes} 
+              placeholder="e.g. Warning: Contains Peanuts" 
+              placeholderTextColor="#9CA3AF" 
+              multiline 
+              maxLength={200}
+            />
+          </ScrollView>
+          <View style={styles.modalFooter}>
+            <TouchableOpacity style={styles.saveBtn} onPress={() => submitMenu.mutate()} disabled={submitMenu.isPending}>
+              {submitMenu.isPending ? <ActivityIndicator color="#FFF" /> : <Text style={styles.saveBtnText}>{editingMenuId ? 'Save Changes' : 'Publish Menu'}</Text>}
+            </TouchableOpacity>
           </View>
-
-          <Text style={styles.label}>Chef's Note (Optional)</Text>
-          <TextInput 
-            style={[styles.input, { marginBottom: 24, marginTop: 12 }]} 
-            value={menuNotes} 
-            onChangeText={setMenuNotes} 
-            placeholder="e.g. Warning: Contains Peanuts" 
-            placeholderTextColor="#9CA3AF" 
-            maxLength={200}
-          />
-
-          <TouchableOpacity style={styles.saveBtn} onPress={() => submitMenu.mutate()} disabled={submitMenu.isPending}>
-            {submitMenu.isPending ? <ActivityIndicator color="#FFF" /> : <Text style={styles.saveBtnText}>{editingMenuId ? 'Save Changes' : 'Publish Menu'}</Text>}
-          </TouchableOpacity>
-          <View style={{ height: 40 }} />
-        </ScrollView>
+        </KeyboardAvoidingView>
       </Modal>
 
       {/* MONTH GRID MODAL */}
@@ -891,6 +894,7 @@ const styles = StyleSheet.create({
   removeBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: '#FEF2F2', alignItems: 'center', justifyContent: 'center' },
   removeText: { color: '#DC2626', fontSize: 18, fontWeight: '700' },
   
+  modalFooter: { padding: 24, paddingTop: 16, borderTopWidth: 1, borderTopColor: '#F2F4F7', backgroundColor: '#FFF' },
   saveBtn: { backgroundColor: '#FF6B6B', borderRadius: 16, paddingVertical: 16, alignItems: 'center' },
   saveBtnText: { color: '#FFF', fontSize: 16, fontWeight: '700' },
 
