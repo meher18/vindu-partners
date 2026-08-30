@@ -42,11 +42,33 @@ export default function VendorPlans() {
   const { data: plans, isLoading, isError, refetch } = useQuery({
     queryKey: ['vendor-plans', kitchen?.id],
     queryFn: async () => {
-      const { data, error } = await supabase.from('subscriptions').select('*').eq('kitchen_id', kitchen?.id);
+      const { data, error } = await supabase.from('subscriptions').select('*').eq('kitchen_id', kitchen?.id).neq('status', 'cancelled');
       if (error) throw error;
       return data;
     },
     enabled: !!kitchen?.id,
+  });
+
+  // Query to count active subscribers per plan
+  const { data: subCounts } = useQuery({
+    queryKey: ['vendor-sub-counts', kitchen?.id],
+    queryFn: async () => {
+      if (!plans || plans.length === 0) return {};
+      const planIds = plans.map(p => p.id);
+      const { data, error } = await supabase
+        .from('customer_subscriptions')
+        .select('subscription_id')
+        .in('subscription_id', planIds)
+        .eq('status', 'active');
+      if (error) return {};
+      
+      const counts: Record<string, number> = {};
+      data.forEach(sub => {
+        counts[sub.subscription_id] = (counts[sub.subscription_id] || 0) + 1;
+      });
+      return counts;
+    },
+    enabled: !!plans && plans.length > 0,
   });
 
   const createPlan = useMutation({
@@ -81,6 +103,23 @@ export default function VendorPlans() {
     }
   });
 
+  const deletePlan = useMutation({
+    mutationFn: async (id: string) => {
+      // Soft delete by setting status to cancelled to preserve customer history
+      const { error } = await supabase.from('subscriptions').update({ status: 'cancelled' }).eq('id', id);
+      if (error) throw error;
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['vendor-plans', kitchen?.id] }),
+    onError: (err: any) => Alert.alert('Error', 'Could not delete plan: ' + err.message)
+  });
+
+  const handleDelete = (id: string, name: string) => {
+    Alert.alert('Delete Plan?', `Are you sure you want to delete your ${name} plan? Existing subscribers will finish their term, but new customers won't see it.`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => deletePlan.mutate(id) }
+    ]);
+  };
+
   const selectedDiet = DIET_OPTIONS.find(d => d.value === dietType)!;
 
   return (
@@ -96,7 +135,7 @@ export default function VendorPlans() {
       </View>
 
       <ScrollView contentContainerStyle={styles.list}>
-        {isLoading && <ActivityIndicator style={{ marginTop: 40 }} color="#FF6B35" />}
+        {isLoading && <ActivityIndicator style={{ marginTop: 40 }} color="#FF6B6B" />}
         {isError && (
           <View style={styles.errorWrap}>
             <Text style={styles.errorEmoji}>⚠️</Text>
@@ -121,6 +160,9 @@ export default function VendorPlans() {
         {plans?.map((plan: any) => {
           const diet = DIET_OPTIONS.find(d => d.value === plan.diet_type);
           const slot = SLOT_OPTIONS.find(s => s.value === plan.slot_name);
+          const subscribers = subCounts?.[plan.id] || 0;
+          const isFull = subscribers >= plan.capacity;
+
           return (
             <View key={plan.id} style={styles.card}>
               <View style={styles.cardHeader}>
@@ -130,12 +172,25 @@ export default function VendorPlans() {
                 </View>
                 <Text style={styles.price}>₹{plan.price_per_day}<Text style={styles.perDay}>/day</Text></Text>
               </View>
-              <Text style={styles.planTitle}>{slot?.emoji} {plan.slot_name.toUpperCase()} PLAN</Text>
-              <View style={styles.cardFooter}>
-                <View style={styles.footerItem}>
-                  <Text style={styles.footerLabel}>Capacity</Text>
-                  <Text style={styles.footerValue}>{plan.capacity} meals</Text>
+              
+              <View style={styles.titleRow}>
+                <Text style={styles.planTitle}>{slot?.emoji} {plan.slot_name.toUpperCase()} PLAN</Text>
+                <TouchableOpacity style={styles.deleteIconBtn} onPress={() => handleDelete(plan.id, `${plan.diet_type} ${plan.slot_name}`)}>
+                  <Text style={styles.deleteIconText}>🗑️</Text>
+                </TouchableOpacity>
+              </View>
+
+              <View style={styles.progressWrap}>
+                <View style={styles.progressRow}>
+                  <Text style={styles.progressLabel}>Active Subscribers</Text>
+                  <Text style={[styles.progressCount, isFull && { color: '#DC2626' }]}>{subscribers} / {plan.capacity}</Text>
                 </View>
+                <View style={styles.progressBarBg}>
+                  <View style={[styles.progressBarFill, { width: `${Math.min((subscribers / plan.capacity) * 100, 100)}%`, backgroundColor: isFull ? '#DC2626' : '#FF6B6B' }]} />
+                </View>
+              </View>
+
+              <View style={styles.cardFooter}>
                 <View style={styles.footerItem}>
                   <Text style={styles.footerLabel}>Target Time</Text>
                   <Text style={styles.footerValue}>{plan.slot_target_time?.slice(0, 5)}</Text>
@@ -152,71 +207,51 @@ export default function VendorPlans() {
 
       {/* CREATE PLAN MODAL */}
       <Modal visible={modalVisible} animationType="slide" presentationStyle="formSheet">
+        {/* ... (Modal content remains same) */}
         <View style={styles.modalHeader}>
           <Text style={styles.modalTitle}>New Meal Plan</Text>
           <TouchableOpacity onPress={() => setModalVisible(false)}><Text style={styles.closeBtn}>Cancel</Text></TouchableOpacity>
         </View>
         <ScrollView style={styles.modalContainer}>
-          {/* Diet Type */}
           <Text style={styles.label}>Diet Type</Text>
           <View style={styles.chipRow}>
             {DIET_OPTIONS.map(opt => (
-              <TouchableOpacity
-                key={opt.value}
-                style={[styles.chip, dietType === opt.value && { backgroundColor: opt.bg, borderColor: opt.color }]}
-                onPress={() => setDietType(opt.value)}
-              >
+              <TouchableOpacity key={opt.value} style={[styles.chip, dietType === opt.value && { backgroundColor: opt.bg, borderColor: opt.color }]} onPress={() => setDietType(opt.value)}>
                 <Text>{opt.emoji}</Text>
                 <Text style={[styles.chipText, dietType === opt.value && { color: opt.color, fontWeight: '700' }]}>{opt.label}</Text>
               </TouchableOpacity>
             ))}
           </View>
 
-          {/* Slot */}
           <Text style={styles.label}>Meal Slot</Text>
           <View style={styles.chipRow}>
             {SLOT_OPTIONS.map(opt => (
-              <TouchableOpacity
-                key={opt.value}
-                style={[styles.chip, slotName === opt.value && styles.chipActive]}
-                onPress={() => setSlotName(opt.value)}
-              >
+              <TouchableOpacity key={opt.value} style={[styles.chip, slotName === opt.value && styles.chipActive]} onPress={() => setSlotName(opt.value)}>
                 <Text>{opt.emoji}</Text>
                 <Text style={[styles.chipText, slotName === opt.value && styles.chipTextActive]}>{opt.label}</Text>
               </TouchableOpacity>
             ))}
           </View>
 
-          {/* Price */}
           <Text style={styles.label}>Price per Day (₹)</Text>
           <View style={styles.chipRow}>
             {PRICE_OPTIONS.map(p => (
-              <TouchableOpacity
-                key={p}
-                style={[styles.chip, price === p && styles.chipActive]}
-                onPress={() => setPrice(p)}
-              >
+              <TouchableOpacity key={p} style={[styles.chip, price === p && styles.chipActive]} onPress={() => setPrice(p)}>
                 <Text style={[styles.chipText, price === p && styles.chipTextActive]}>₹{p}</Text>
               </TouchableOpacity>
             ))}
           </View>
           <Text style={styles.priceNote}>Your share: ₹{(price * 0.8).toFixed(0)} · Delivery: ₹{(price * 0.2).toFixed(0)}</Text>
 
-          {/* Capacity */}
           <Text style={styles.label}>Daily Capacity (meals)</Text>
           <View style={styles.chipRow}>
             {[20, 30, 50, 75, 100].map(c => (
-              <TouchableOpacity
-                key={c}
-                style={[styles.chip, capacity === c && styles.chipActive]}
-                onPress={() => setCapacity(c)}
-              >
+              <TouchableOpacity key={c} style={[styles.chip, capacity === c && styles.chipActive]} onPress={() => setCapacity(c)}>
                 <Text style={[styles.chipText, capacity === c && styles.chipTextActive]}>{c}</Text>
               </TouchableOpacity>
             ))}
           </View>
 
-          {/* Summary */}
           <View style={styles.summary}>
             <Text style={styles.summaryTitle}>Plan Summary</Text>
             <Text style={styles.summaryText}>{selectedDiet.emoji} {dietType} {slotName} at ₹{price}/day for {capacity} customers</Text>
@@ -257,7 +292,16 @@ const styles = StyleSheet.create({
   badgeText: { fontSize: 12, fontWeight: '700' },
   price: { fontSize: 22, fontWeight: '900', color: '#101828' },
   perDay: { fontSize: 14, color: '#667085', fontWeight: '500' },
-  planTitle: { fontSize: 18, fontWeight: '800', color: '#344054', marginBottom: 20 },
+  titleRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
+  planTitle: { fontSize: 18, fontWeight: '800', color: '#344054' },
+  deleteIconBtn: { padding: 8, backgroundColor: '#FEF2F2', borderRadius: 12 },
+  deleteIconText: { fontSize: 16 },
+  progressWrap: { marginBottom: 20, backgroundColor: '#F9FAFB', padding: 12, borderRadius: 12 },
+  progressRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 },
+  progressLabel: { fontSize: 12, fontWeight: '600', color: '#667085' },
+  progressCount: { fontSize: 13, fontWeight: '700', color: '#101828' },
+  progressBarBg: { height: 6, backgroundColor: '#EAECF0', borderRadius: 3, overflow: 'hidden' },
+  progressBarFill: { height: '100%', borderRadius: 3 },
   cardFooter: { flexDirection: 'row', borderTopWidth: 1, borderTopColor: '#F2F4F7', paddingTop: 16 },
   footerItem: { flex: 1 },
   footerLabel: { fontSize: 12, color: '#98A2B3', fontWeight: '600', textTransform: 'uppercase', marginBottom: 4 },
