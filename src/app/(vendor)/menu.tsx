@@ -715,7 +715,7 @@ export default function VendorMenuPlanner() {
 
             <Text style={styles.label}>Chef's Note (Optional)</Text>
             <TextInput 
-              style={[styles.input, { marginBottom: 24, marginTop: 12 }]} 
+              style={[styles.input, { marginBottom: 24, marginTop: 12, minHeight: 100, textAlignVertical: 'top' }]} 
               value={menuNotes} 
               onChangeText={setMenuNotes} 
               placeholder="e.g. Warning: Contains Peanuts" 
