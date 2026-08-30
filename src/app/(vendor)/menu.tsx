@@ -441,6 +441,8 @@ export default function VendorMenuPlanner() {
 
       <ScrollView 
         contentContainerStyle={styles.body}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#FF6B6B" />}
       >
         <Text style={styles.dateHeading}>{isSelectedPast ? 'Historical Menu' : 'Plan for'} {displayDate}</Text>
@@ -610,7 +612,7 @@ export default function VendorMenuPlanner() {
           </View>
           <TouchableOpacity onPress={() => setModalVisible(false)}><Text style={styles.closeBtn}>Cancel</Text></TouchableOpacity>
         </View>
-        <ScrollView style={styles.modalContainer}>
+        <ScrollView style={styles.modalContainer} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
           <View style={styles.itemsHeaderRow}>
             <Text style={styles.label}>Menu Items</Text>
             <View style={{ flexDirection: 'row', gap: 12 }}>
