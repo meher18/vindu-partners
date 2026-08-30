@@ -597,7 +597,7 @@ export default function VendorMenuPlanner() {
       </ScrollView>
 
       {/* PLAN MENU MODAL */}
-      <Modal visible={modalVisible} animationType="slide" presentationStyle="formSheet">
+      <Modal visible={modalVisible} animationType="slide" presentationStyle="formSheet" onRequestClose={() => setModalVisible(false)}>
         <View style={styles.modalHeader}>
           <View>
             <Text style={styles.modalTitle}>{editingMenuId ? 'Edit Menu' : 'Plan Menu'}</Text>
@@ -646,7 +646,7 @@ export default function VendorMenuPlanner() {
       </Modal>
 
       {/* MONTH GRID MODAL */}
-      <Modal visible={monthModalVisible} animationType="fade" transparent>
+      <Modal visible={monthModalVisible} animationType="fade" transparent onRequestClose={() => setMonthModalVisible(false)}>
         <View style={styles.overlay}>
           <View style={styles.overlayCard}>
             <View style={{flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24}}>
@@ -689,7 +689,7 @@ export default function VendorMenuPlanner() {
       </Modal>
 
       {/* AUTOFILL CONFIG MODAL */}
-      <Modal visible={autofillModalVisible} animationType="fade" transparent>
+      <Modal visible={autofillModalVisible} animationType="fade" transparent onRequestClose={() => setAutofillModalVisible(false)}>
         <View style={styles.overlay}>
           <View style={styles.overlayCard}>
             <Text style={styles.overlayTitle}>Autofill Settings</Text>
