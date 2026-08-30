@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, ActivityIndicator, Modal, TextInput, Alert, Switch, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, ActivityIndicator, Modal, TextInput, Alert, Switch, RefreshControl, Vibration } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
@@ -290,6 +290,7 @@ export default function VendorMenuPlanner() {
   });
 
   const handlePlanMeal = (planId: string) => {
+    Vibration.vibrate(50);
     setEditingPlanId(planId);
     setEditingMenuId(null);
     setMenuItems(['']);
@@ -299,6 +300,7 @@ export default function VendorMenuPlanner() {
 
   const handleEditMeal = (menu: any) => {
     const openModal = () => {
+      Vibration.vibrate(50);
       setEditingPlanId(menu.subscription_id);
       setEditingMenuId(menu.id);
       setMenuItems([...menu.items]);
@@ -373,6 +375,7 @@ export default function VendorMenuPlanner() {
     const newArr = [...menuItems]; newArr[index] = val; setMenuItems(newArr);
   };
   const removeItem = (index: number) => {
+    Vibration.vibrate(50);
     const newArr = menuItems.filter((_, i) => i !== index); setMenuItems(newArr.length ? newArr : ['']);
   };
   
@@ -638,7 +641,7 @@ export default function VendorMenuPlanner() {
             <View style={{ flexDirection: 'row', gap: 12 }}>
               <TouchableOpacity onPress={copyPreviousMenu} style={styles.copyBtnWrap}><Text style={styles.copyLink}>📋 Copy Previous</Text></TouchableOpacity>
               {menuItems.length < 10 && (
-                <TouchableOpacity onPress={() => setMenuItems([...menuItems, ''])} style={styles.addBtnWrap}><Text style={styles.addItemLink}>+ Add Dish</Text></TouchableOpacity>
+                <TouchableOpacity onPress={() => { Vibration.vibrate(50); setMenuItems([...menuItems, '']); }} style={styles.addBtnWrap}><Text style={styles.addItemLink}>+ Add Dish</Text></TouchableOpacity>
               )}
             </View>
           </View>
