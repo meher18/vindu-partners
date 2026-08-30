@@ -554,9 +554,15 @@ export default function VendorMenuPlanner() {
                     ) : null}
                     {!isSelectedPast && (
                       <View style={styles.actionRow}>
-                        <TouchableOpacity style={styles.editBtn} onPress={() => handleEditMeal(planMenu)}>
-                          <Text style={styles.editBtnText}>✏️ Edit Menu</Text>
-                        </TouchableOpacity>
+                        {!isHoliday ? (
+                          <TouchableOpacity style={styles.editBtn} onPress={() => handleEditMeal(planMenu)}>
+                            <Text style={styles.editBtnText}>✏️ Edit Menu</Text>
+                          </TouchableOpacity>
+                        ) : (
+                          <View style={[styles.editBtn, { opacity: 0.5 }]}>
+                            <Text style={styles.editBtnText}>🔒 Kitchen Closed</Text>
+                          </View>
+                        )}
                         
                         {selectedDate !== todayStr && (
                           <TouchableOpacity style={styles.deleteBtn} onPress={() => Alert.alert('Delete Menu?', 'Remove this menu?', [{text: 'Cancel'}, {text: 'Delete', style: 'destructive', onPress: () => deleteMenu.mutate(planMenu.id)}])}>
@@ -623,9 +629,15 @@ export default function VendorMenuPlanner() {
                               ) : null}
                               {!isSelectedPast && (
                                 <View style={styles.actionRow}>
-                                  <TouchableOpacity style={styles.editBtn} onPress={() => handleEditMeal(planMenu)}>
-                                    <Text style={styles.editBtnText}>✏️ Edit Menu</Text>
-                                  </TouchableOpacity>
+                                  {!isHoliday ? (
+                                    <TouchableOpacity style={styles.editBtn} onPress={() => handleEditMeal(planMenu)}>
+                                      <Text style={styles.editBtnText}>✏️ Edit Menu</Text>
+                                    </TouchableOpacity>
+                                  ) : (
+                                    <View style={[styles.editBtn, { opacity: 0.5 }]}>
+                                      <Text style={styles.editBtnText}>🔒 Kitchen Closed</Text>
+                                    </View>
+                                  )}
                                   
                                   {selectedDate !== todayStr && (
                                     <TouchableOpacity style={styles.deleteBtn} onPress={() => Alert.alert('Delete Menu?', 'Remove this menu?', [{text: 'Cancel'}, {text: 'Delete', style: 'destructive', onPress: () => deleteMenu.mutate(planMenu.id)}])}>
