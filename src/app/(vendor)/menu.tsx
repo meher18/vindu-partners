@@ -162,19 +162,21 @@ export default function VendorMenuPlanner() {
       if (filteredItems.length === 0) throw new Error("Please add at least one menu item.");
       if (filteredItems.length > 10) throw new Error("Maximum 10 items allowed per menu.");
 
-      if (editingMenuId) {
-        const { error } = await supabase.from('menus').update({ items: filteredItems, notes: menuNotes }).eq('id', editingMenuId);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from('menus').insert([{
-          subscription_id: editingPlanId,
-          effective_date: selectedDate,
-          items: filteredItems,
-          notes: menuNotes,
-          status: 'active'
-        }]);
-        if (error) throw error;
-      }
+      const payload: any = {
+        subscription_id: editingPlanId,
+        effective_date: selectedDate,
+        items: filteredItems,
+        notes: menuNotes,
+        status: 'active'
+      };
+      
+      if (editingMenuId) payload.id = editingMenuId;
+
+      const { error } = await supabase.from('menus').upsert([payload], {
+        onConflict: 'subscription_id,effective_date'
+      });
+      
+      if (error) throw new Error(error.message);
     },
     onSuccess: () => {
       setModalVisible(false);
