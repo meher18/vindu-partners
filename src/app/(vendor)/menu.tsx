@@ -430,16 +430,26 @@ export default function VendorMenuPlanner() {
     setRefreshing(false);
   }, [kitchen?.id, queryClient]);
 
-  if (kLoading || pLoading) return <View style={styles.center}><ActivityIndicator size="large" color="#FF6B6B" /></View>;
+  if (kLoading || pLoading) return (
+    <View style={styles.center}>
+      <ActivityIndicator size="large" color="#FF6B6B" style={{ marginBottom: 16 }} />
+      <Text style={{ fontSize: 15, fontWeight: '600', color: '#667085' }}>Syncing Kitchen Data...</Text>
+    </View>
+  );
 
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
-        <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
-          <Text style={styles.title}>Planner</Text>
-          <TouchableOpacity onPress={() => setMonthModalVisible(true)} style={{padding: 8, backgroundColor: '#F9FAFB', borderRadius: 8}}>
-            <Text style={{fontSize: 16}}>📅</Text>
-          </TouchableOpacity>
+        <View>
+          <View style={{flexDirection: 'row', alignItems: 'center', gap: 8}}>
+            <Text style={styles.title}>Planner</Text>
+            <TouchableOpacity onPress={() => setMonthModalVisible(true)} style={{padding: 6, backgroundColor: '#F9FAFB', borderRadius: 8}}>
+              <Text style={{fontSize: 16}}>📅</Text>
+            </TouchableOpacity>
+          </View>
+          <Text style={{ fontSize: 13, color: '#667085', fontWeight: '500', marginTop: 4 }}>
+            {new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+          </Text>
         </View>
         <TouchableOpacity style={styles.autofillBtn} onPress={() => setAutofillModalVisible(true)}>
           <Text style={styles.autofillBtnText}>🪄 Autofill Week</Text>
