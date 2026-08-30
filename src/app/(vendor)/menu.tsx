@@ -15,6 +15,12 @@ const getLocalISODate = (d: Date) => {
   return new Date(d.getTime() - offset).toISOString().split('T')[0];
 };
 
+const parseLocalDate = (dateStr: string) => {
+  if (!dateStr) return new Date();
+  const [y, m, d] = dateStr.split('-');
+  return new Date(Number(y), Number(m) - 1, Number(d));
+};
+
 const generateMonthGrid = (targetDate: Date) => {
   const year = targetDate.getFullYear();
   const month = targetDate.getMonth();
@@ -83,7 +89,7 @@ export default function VendorMenuPlanner() {
   const monthGrid = generateMonthGrid(calendarMonth);
 
   useEffect(() => {
-    const d = new Date(selectedDate);
+    const d = parseLocalDate(selectedDate);
     if (d.getMonth() !== calendarMonth.getMonth() || d.getFullYear() !== calendarMonth.getFullYear()) {
       setCalendarMonth(new Date(d.getFullYear(), d.getMonth(), 1));
     }
@@ -154,7 +160,7 @@ export default function VendorMenuPlanner() {
     queryFn: async () => {
       if (!plans || plans.length === 0) return [];
       
-      const anchor = new Date(selectedDate);
+      const anchor = parseLocalDate(selectedDate);
       const stripStart = new Date(anchor); stripStart.setDate(stripStart.getDate() - 3);
       const stripEnd = new Date(anchor); stripEnd.setDate(stripEnd.getDate() + 10);
       
@@ -398,7 +404,7 @@ export default function VendorMenuPlanner() {
 
   const copyPreviousMenu = async () => {
     if (!editingPlanId || !menus) return;
-    const selectedDateObj = new Date(selectedDate);
+    const selectedDateObj = parseLocalDate(selectedDate);
     selectedDateObj.setDate(selectedDateObj.getDate() - 7);
     const lastWeekStr = getLocalISODate(selectedDateObj);
     const lastWeekDayName = selectedDateObj.toLocaleDateString('en-US', { weekday: 'long' });
@@ -447,7 +453,7 @@ export default function VendorMenuPlanner() {
     }
   };
 
-  const selectedDateObj = new Date(selectedDate);
+  const selectedDateObj = parseLocalDate(selectedDate);
   const displayDate = selectedDateObj.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
   const displayDayNameFull = selectedDateObj.toLocaleDateString('en-US', { weekday: 'long' });
   const selectedDayStr = SHORT_DAYS[selectedDateObj.getDay()];
@@ -532,7 +538,7 @@ export default function VendorMenuPlanner() {
             </TouchableOpacity>
           </View>
           <Text style={{ fontSize: 13, color: '#667085', fontWeight: '500', marginTop: 4 }}>
-            {new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
+            {parseLocalDate(selectedDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
           </Text>
         </View>
         <TouchableOpacity style={styles.autofillBtn} onPress={() => {
@@ -857,7 +863,7 @@ export default function VendorMenuPlanner() {
                 <TouchableOpacity onPress={() => setCalendarMonth(prev => new Date(prev.getFullYear(), prev.getMonth() + 1, 1))}><Text style={{fontSize: 24, color: '#101828'}}>›</Text></TouchableOpacity>
               </View>
               <View style={{flexDirection: 'row', alignItems: 'center', gap: 16}}>
-                <TouchableOpacity onPress={() => setCalendarMonth(new Date(selectedDate))}>
+                <TouchableOpacity onPress={() => setCalendarMonth(parseLocalDate(selectedDate))}>
                   <Text style={{color: '#FF6B6B', fontWeight: '600', fontSize: 13}}>Snap to Selected</Text>
                 </TouchableOpacity>
                 <TouchableOpacity onPress={() => setMonthModalVisible(false)}>
