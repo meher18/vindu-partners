@@ -107,7 +107,7 @@ export default function VendorMenuPlanner() {
     }, 50);
   }, [selectedDate]);
 
-  const { data: kitchen, isLoading: kLoading } = useQuery({
+  const { data: kitchen, isLoading: kLoading, isError: kError } = useQuery({
     queryKey: ['vendor-kitchen', user?.id],
     queryFn: async () => {
       const { data } = await supabase.from('kitchens').select('id').eq('vendor_id', user?.id).single();
@@ -116,7 +116,7 @@ export default function VendorMenuPlanner() {
     enabled: !!user?.id,
   });
 
-  const { data: plans, isLoading: pLoading } = useQuery({
+  const { data: plans, isLoading: pLoading, isError: pError } = useQuery({
     queryKey: ['vendor-plans', kitchen?.id],
     queryFn: async () => {
       // We must fetch ALL plans (even cancelled) so we can display their historical menus.
@@ -126,7 +126,7 @@ export default function VendorMenuPlanner() {
     enabled: !!kitchen?.id,
   });
 
-  const { data: menus, isLoading: mLoading } = useQuery({
+  const { data: menus, isLoading: mLoading, isError: mError } = useQuery({
     queryKey: ['vendor-menus', kitchen?.id, calendarMonth.getFullYear(), calendarMonth.getMonth()],
     queryFn: async () => {
       if (!plans || plans.length === 0) return [];
@@ -434,6 +434,17 @@ export default function VendorMenuPlanner() {
     <View style={styles.center}>
       <ActivityIndicator size="large" color="#FF6B6B" style={{ marginBottom: 16 }} />
       <Text style={{ fontSize: 15, fontWeight: '600', color: '#667085' }}>Syncing Kitchen Data...</Text>
+    </View>
+  );
+
+  if (kError || pError || mError) return (
+    <View style={styles.center}>
+      <Text style={{ fontSize: 40, marginBottom: 16 }}>📶</Text>
+      <Text style={{ fontSize: 18, fontWeight: '700', color: '#101828', marginBottom: 8 }}>Connection Lost</Text>
+      <Text style={{ fontSize: 14, color: '#667085', textAlign: 'center', paddingHorizontal: 40 }}>We couldn't reach the servers. Please check your internet connection.</Text>
+      <TouchableOpacity onPress={onRefresh} style={{ marginTop: 24, backgroundColor: '#101828', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 }}>
+        <Text style={{ color: '#FFF', fontWeight: '700' }}>Retry Connection</Text>
+      </TouchableOpacity>
     </View>
   );
 
