@@ -78,6 +78,13 @@ export default function VendorMenuPlanner() {
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const monthGrid = generateMonthGrid(calendarMonth);
 
+  useEffect(() => {
+    const d = new Date(selectedDate);
+    if (d.getMonth() !== calendarMonth.getMonth() || d.getFullYear() !== calendarMonth.getFullYear()) {
+      setCalendarMonth(new Date(d.getFullYear(), d.getMonth(), 1));
+    }
+  }, [selectedDate]);
+
   const [modalVisible, setModalVisible] = useState(false);
   const [monthModalVisible, setMonthModalVisible] = useState(false);
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
@@ -120,8 +127,9 @@ export default function VendorMenuPlanner() {
     queryFn: async () => {
       if (!plans || plans.length === 0) return [];
       
-      const stripStart = new Date(); stripStart.setDate(stripStart.getDate() - 3);
-      const stripEnd = new Date(); stripEnd.setDate(stripEnd.getDate() + 10);
+      const anchor = new Date(selectedDate);
+      const stripStart = new Date(anchor); stripStart.setDate(stripStart.getDate() - 3);
+      const stripEnd = new Date(anchor); stripEnd.setDate(stripEnd.getDate() + 10);
       
       const gridStart = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth(), 1);
       const gridEnd = new Date(calendarMonth.getFullYear(), calendarMonth.getMonth() + 1, 0);
