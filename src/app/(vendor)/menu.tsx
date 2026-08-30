@@ -430,11 +430,14 @@ export default function VendorMenuPlanner() {
             const visiblePlans = plans.filter(plan => {
               const hasMenu = menus?.some(m => m.subscription_id === plan.id && m.effective_date === selectedDate);
               if (isSelectedPast) return hasMenu;
-              return plan.status === 'active';
+              return true; // For future days, show all plans (active + cancelled) so they can fulfill lingering subscriptions
             });
 
-            const operatingPlans = visiblePlans.filter(p => p.operating_days ? p.operating_days.includes(selectedDayStr) : true);
-            const inactivePlans = visiblePlans.filter(p => p.operating_days ? !p.operating_days.includes(selectedDayStr) : false);
+            const activeVisiblePlans = visiblePlans.filter(p => p.status === 'active');
+            const cancelledPlans = visiblePlans.filter(p => p.status === 'cancelled');
+
+            const operatingPlans = activeVisiblePlans.filter(p => p.operating_days ? p.operating_days.includes(selectedDayStr) : true);
+            const inactivePlans = activeVisiblePlans.filter(p => p.operating_days ? !p.operating_days.includes(selectedDayStr) : false);
 
             return (
               <View>
@@ -500,6 +503,56 @@ export default function VendorMenuPlanner() {
                     {inactivePlans.map(plan => (
                       <Text key={plan.id} style={styles.compactInactiveItem}>• {plan.diet_type.toUpperCase()} {plan.slot_name.toUpperCase()}</Text>
                     ))}
+                  </View>
+                )}
+
+                {/* Render cancelled plans that might need fulfillment */}
+                {cancelledPlans.length > 0 && (
+                  <View style={{ marginTop: 24 }}>
+                    <Text style={{ fontSize: 14, fontWeight: '700', color: '#B91C1C', marginBottom: 12 }}>⚠️ Cancelled Plans (Fulfill Orders)</Text>
+                    {cancelledPlans.map(plan => {
+                      const planMenu = menus?.find(m => m.subscription_id === plan.id && m.effective_date === selectedDate);
+                      const isPlanned = !!planMenu;
+
+                      return (
+                        <View key={plan.id} style={[styles.planCard, isPlanned ? styles.cardPlanned : styles.cardUnplanned, { borderColor: '#FCA5A5', backgroundColor: '#FEF2F2' }]}>
+                          <View style={styles.planHeader}>
+                            <Text style={[styles.planTitle, { color: '#991B1B' }]}>{plan.diet_type.toUpperCase()} {plan.slot_name.toUpperCase()}</Text>
+                            <View style={[styles.statusBadge, isPlanned ? styles.badgePlanned : styles.badgeUnplanned]}>
+                              <Text style={[styles.statusText, isPlanned ? styles.statusTextPlanned : styles.statusTextUnplanned]}>
+                                {isPlanned ? '✅ Planned' : '⚠️ Not Planned'}
+                              </Text>
+                            </View>
+                          </View>
+
+                          {isPlanned ? (
+                            <View style={styles.plannedContent}>
+                              {planMenu.items.map((item: string, idx: number) => (
+                                <View key={idx} style={styles.dishRowDisplay}>
+                                  <View style={styles.bullet} />
+                                  <Text style={styles.dishText}>{item}</Text>
+                                </View>
+                              ))}
+                              {!isSelectedPast && (
+                                <View style={styles.actionRow}>
+                                  <TouchableOpacity style={styles.editBtn} onPress={() => handleEditMeal(planMenu)}>
+                                    <Text style={styles.editBtnText}>✏️ Edit Menu</Text>
+                                  </TouchableOpacity>
+                                </View>
+                              )}
+                            </View>
+                          ) : (
+                            <View style={styles.unplannedContent}>
+                              {!isSelectedPast ? (
+                                <TouchableOpacity style={[styles.planActionBtn, { backgroundColor: '#DC2626' }]} onPress={() => handlePlanMeal(plan.id)}>
+                                  <Text style={styles.planActionText}>+ Plan this meal</Text>
+                                </TouchableOpacity>
+                              ) : null}
+                            </View>
+                          )}
+                        </View>
+                      );
+                    })}
                   </View>
                 )}
               </View>
