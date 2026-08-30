@@ -170,7 +170,7 @@ export default function VendorMenuPlanner() {
 
   const submitMenu = useMutation({
     mutationFn: async () => {
-      const filteredItems = menuItems.filter(item => item.trim() !== '');
+      const filteredItems = menuItems.map(item => item.trim()).filter(item => item !== '');
       if (filteredItems.length === 0) throw new Error("Please add at least one menu item.");
       if (filteredItems.length > 10) throw new Error("Maximum 10 items allowed per menu.");
 
@@ -178,7 +178,7 @@ export default function VendorMenuPlanner() {
         subscription_id: editingPlanId,
         effective_date: selectedDate,
         items: filteredItems,
-        notes: menuNotes,
+        notes: menuNotes.trim() || null,
         status: 'active'
       };
       
