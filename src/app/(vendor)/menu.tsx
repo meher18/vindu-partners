@@ -589,6 +589,12 @@ export default function VendorMenuPlanner() {
                                   <TouchableOpacity style={styles.editBtn} onPress={() => handleEditMeal(planMenu)}>
                                     <Text style={styles.editBtnText}>✏️ Edit Menu</Text>
                                   </TouchableOpacity>
+                                  
+                                  {selectedDate !== todayStr && (
+                                    <TouchableOpacity style={styles.deleteBtn} onPress={() => Alert.alert('Delete Menu?', 'Remove this menu?', [{text: 'Cancel'}, {text: 'Delete', style: 'destructive', onPress: () => deleteMenu.mutate(planMenu.id)}])}>
+                                      <Text style={styles.deleteBtnText}>🗑️</Text>
+                                    </TouchableOpacity>
+                                  )}
                                 </View>
                               )}
                             </View>
