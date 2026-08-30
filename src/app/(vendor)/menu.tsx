@@ -388,8 +388,11 @@ export default function VendorMenuPlanner() {
                       <Text style={styles.pastUnplannedText}>No menu was published for this day.</Text>
                     )}
                   </View>
-                })}
-                
+                )}
+              </View>
+            );
+          })}
+          
                 {/* Render compact inactive summary if any */}
                 {inactivePlans.length > 0 && (
                   <View style={styles.compactInactiveContainer}>
