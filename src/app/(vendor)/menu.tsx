@@ -445,13 +445,15 @@ export default function VendorMenuPlanner() {
       >
         <Text style={styles.dateHeading}>{isSelectedPast ? 'Historical Menu' : 'Plan for'} {displayDate}</Text>
 
-        {isHoliday ? (
-          <View style={styles.holidayState}>
+        {isHoliday && (
+          <View style={[styles.holidayState, { marginBottom: 24 }]}>
             <Text style={styles.holidayEmoji}>🏖️</Text>
             <Text style={styles.holidayTitle}>Kitchen Closed</Text>
             <Text style={styles.holidaySub}>You marked this day as a holiday ({isHoliday.reason}). Customers will not expect meals.</Text>
           </View>
-        ) : !plans || plans.length === 0 ? (
+        )}
+
+        {!plans || plans.length === 0 ? (
           <View style={styles.emptyState}>
             <Text style={styles.emptyIcon}>📦</Text>
             <Text style={styles.emptyTitle}>No Active Plans</Text>
@@ -518,7 +520,7 @@ export default function VendorMenuPlanner() {
                   </View>
                 ) : (
                   <View style={styles.unplannedContent}>
-                    {!isSelectedPast ? (
+                    {!isSelectedPast && !isHoliday ? (
                       <TouchableOpacity style={styles.planActionBtn} onPress={() => handlePlanMeal(plan.id)}>
                         <Text style={styles.planActionText}>+ Plan this meal</Text>
                       </TouchableOpacity>
