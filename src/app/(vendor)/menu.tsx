@@ -729,7 +729,10 @@ export default function VendorMenuPlanner() {
               ))}
             </View>
 
-            <Text style={styles.label}>Chef's Note (Optional)</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' }}>
+              <Text style={styles.label}>Chef's Note (Optional)</Text>
+              <Text style={{ fontSize: 12, fontWeight: '600', color: menuNotes.length >= 190 ? '#EF4444' : '#9CA3AF' }}>{menuNotes.length}/200</Text>
+            </View>
             <TextInput 
               style={[styles.input, { marginBottom: 24, marginTop: 12, minHeight: 100, textAlignVertical: 'top' }]} 
               value={menuNotes} 
@@ -806,15 +809,21 @@ export default function VendorMenuPlanner() {
             <Text style={styles.overlaySub}>Select which plans you want to automatically roll over from last week.</Text>
             
             <View style={{flexDirection: 'row', justifyContent: 'flex-end', gap: 16, marginBottom: 12}}>
-              <TouchableOpacity onPress={() => setSelectedAutofillPlans({})}>
-                <Text style={{color: '#667085', fontWeight: '600', fontSize: 13}}>Deselect All</Text>
+              <TouchableOpacity 
+                onPress={() => setSelectedAutofillPlans({})}
+                disabled={!Object.values(selectedAutofillPlans).some(Boolean)}
+              >
+                <Text style={{color: '#667085', fontWeight: '600', fontSize: 13, opacity: !Object.values(selectedAutofillPlans).some(Boolean) ? 0.3 : 1}}>Deselect All</Text>
               </TouchableOpacity>
-              <TouchableOpacity onPress={() => {
-                const all: Record<string, boolean> = {};
-                plans?.filter(p => p.status === 'active').forEach(p => all[p.id] = true);
-                setSelectedAutofillPlans(all);
-              }}>
-                <Text style={{color: '#FF6B6B', fontWeight: '600', fontSize: 13}}>Select All</Text>
+              <TouchableOpacity 
+                onPress={() => {
+                  const all: Record<string, boolean> = {};
+                  plans?.filter(p => p.status === 'active').forEach(p => all[p.id] = true);
+                  setSelectedAutofillPlans(all);
+                }}
+                disabled={Object.values(selectedAutofillPlans).filter(Boolean).length === (plans?.filter(p => p.status === 'active').length || 0)}
+              >
+                <Text style={{color: '#FF6B6B', fontWeight: '600', fontSize: 13, opacity: Object.values(selectedAutofillPlans).filter(Boolean).length === (plans?.filter(p => p.status === 'active').length || 0) ? 0.3 : 1}}>Select All</Text>
               </TouchableOpacity>
             </View>
             
