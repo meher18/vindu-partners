@@ -4,13 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
 
-type SlotType = 'lunch' | 'dinner';
 type TabType = 'upcoming' | 'past';
-
-const SLOT_OPTIONS: { label: string; value: SlotType; emoji: string }[] = [
-  { label: 'Lunch', value: 'lunch', emoji: '🌤️' },
-  { label: 'Dinner', value: 'dinner', emoji: '🌙' },
-];
 
 export default function VendorMenu() {
   const { user } = useAuthStore();
@@ -20,7 +14,7 @@ export default function VendorMenu() {
 
   const today = new Date().toISOString().split('T')[0];
   const [effectiveDate, setEffectiveDate] = useState(today);
-  const [slotName, setSlotName] = useState<SlotType>('lunch');
+  const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
   const [menuItems, setMenuItems] = useState<string[]>(['']);
 
   const { data: kitchen } = useQuery({
@@ -32,31 +26,44 @@ export default function VendorMenu() {
     enabled: !!user?.id,
   });
 
-  const { data: menus, isLoading, isError, refetch } = useQuery({
-    queryKey: ['vendor-menus', kitchen?.id],
+  const { data: plans } = useQuery({
+    queryKey: ['vendor-plans', kitchen?.id],
     queryFn: async () => {
-      const { data, error } = await supabase.from('menus').select('*').eq('kitchen_id', kitchen?.id).order('effective_date', { ascending: true });
+      const { data, error } = await supabase.from('subscriptions').select('id, diet_type, slot_name').eq('kitchen_id', kitchen?.id).neq('status', 'cancelled');
       if (error) throw error;
+      if (data && data.length > 0 && !selectedPlanId) setSelectedPlanId(data[0].id);
       return data;
     },
     enabled: !!kitchen?.id,
   });
 
+  const { data: menus, isLoading, isError, refetch } = useQuery({
+    queryKey: ['vendor-menus', kitchen?.id],
+    queryFn: async () => {
+      if (!plans || plans.length === 0) return [];
+      const planIds = plans.map(p => p.id);
+      const { data, error } = await supabase.from('menus').select('*, subscription:subscriptions(diet_type, slot_name)').in('subscription_id', planIds).order('effective_date', { ascending: true });
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!plans && plans.length > 0,
+  });
+
   const createMenu = useMutation({
     mutationFn: async () => {
+      if (!selectedPlanId) throw new Error("Please select a plan first.");
       if (effectiveDate < today) throw new Error("You cannot publish a menu for a past date.");
       const maxDate = new Date(); maxDate.setDate(maxDate.getDate() + 7);
       if (effectiveDate > maxDate.toISOString().split('T')[0]) throw new Error("Menus can only be scheduled up to 7 days in advance.");
       const filteredItems = menuItems.filter(item => item.trim() !== '');
       if (filteredItems.length === 0) throw new Error("Please add at least one menu item.");
 
-      // Check if menu already exists for this date+slot
-      const exists = menus?.find(m => m.effective_date === effectiveDate && m.slot_name === slotName);
-      if (exists) throw new Error(`You already have a ${slotName} menu published for ${effectiveDate}. Please delete it first if you want to replace it.`);
+      // Check if menu already exists for this date+plan
+      const exists = menus?.find(m => m.effective_date === effectiveDate && m.subscription_id === selectedPlanId);
+      if (exists) throw new Error(`You already have a menu published for this plan on ${effectiveDate}. Please delete it first if you want to replace it.`);
 
       const { data, error } = await supabase.from('menus').insert([{
-        kitchen_id: kitchen?.id,
-        slot_name: slotName,
+        subscription_id: selectedPlanId,
         effective_date: effectiveDate,
         items: filteredItems,
         status: 'active'
@@ -82,6 +89,20 @@ export default function VendorMenu() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['vendor-menus', kitchen?.id] }),
     onError: (err: any) => Alert.alert('Error', 'Could not delete menu: ' + err.message)
   });
+
+  const copyPreviousMenu = () => {
+    if (!selectedPlanId || !menus) return;
+    // Find the most recent menu for this specific plan that is BEFORE the currently selected effectiveDate
+    const pastMenus = menus
+      .filter(m => m.subscription_id === selectedPlanId && m.effective_date < effectiveDate)
+      .sort((a, b) => new Date(b.effective_date).getTime() - new Date(a.effective_date).getTime());
+    
+    if (pastMenus.length > 0) {
+      setMenuItems(pastMenus[0].items);
+    } else {
+      Alert.alert('No History', 'There are no past menus for this plan to copy from.');
+    }
+  };
 
   const handleDelete = (id: string, dateStr: string) => {
     Alert.alert('Delete Menu?', `Are you sure you want to remove the menu for ${dateStr}? Customers will no longer see it.`, [
@@ -119,7 +140,13 @@ export default function VendorMenu() {
           <Text style={styles.title}>Daily Menus</Text>
           <Text style={styles.subtitle}>Plan what you'll cook</Text>
         </View>
-        <TouchableOpacity style={styles.addButton} onPress={() => setModalVisible(true)}>
+        <TouchableOpacity style={styles.addButton} onPress={() => {
+          if (!plans || plans.length === 0) {
+            Alert.alert('No Plans', 'Please create a Meal Plan first before publishing a menu.');
+            return;
+          }
+          setModalVisible(true);
+        }}>
           <Text style={styles.addButtonText}>+ Publish</Text>
         </TouchableOpacity>
       </View>
@@ -146,25 +173,20 @@ export default function VendorMenu() {
                 ? "You haven't scheduled any meals. Publish your menu so customers can order!" 
                 : "Your past menus will appear here for reference."}
             </Text>
-            {activeTab === 'upcoming' && (
-              <TouchableOpacity style={styles.emptyBtn} onPress={() => setModalVisible(true)}>
-                <Text style={styles.emptyBtnText}>Publish a Menu</Text>
-              </TouchableOpacity>
-            )}
           </View>
         )}
 
         {filteredMenus?.map((menu: any) => {
-          const slot = SLOT_OPTIONS.find(s => s.value === menu.slot_name);
           const menuDate = new Date(menu.effective_date);
           const dateStr = menuDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', timeZone: 'Asia/Kolkata' });
           const isPast = menu.effective_date < today;
+          const planName = `${menu.subscription?.diet_type?.toUpperCase()} ${menu.subscription?.slot_name?.toUpperCase()}`;
           return (
             <View key={menu.id} style={[styles.card, isPast && styles.cardPast]}>
               <View style={styles.cardHeader}>
                 <View>
                   <Text style={styles.menuDate}>{dateStr}</Text>
-                  <Text style={styles.menuSlot}>{slot?.emoji} {menu.slot_name.toUpperCase()}</Text>
+                  <Text style={styles.menuSlot}>{planName}</Text>
                 </View>
                 {!isPast && (
                   <TouchableOpacity style={styles.deleteIconBtn} onPress={() => handleDelete(menu.id, dateStr)}>
@@ -187,12 +209,21 @@ export default function VendorMenu() {
 
       {/* PUBLISH MODAL */}
       <Modal visible={modalVisible} animationType="slide" presentationStyle="formSheet">
-        {/* ... (Modal Header) */}
         <View style={styles.modalHeader}>
           <Text style={styles.modalTitle}>Publish Menu</Text>
           <TouchableOpacity onPress={() => setModalVisible(false)}><Text style={styles.closeBtn}>Cancel</Text></TouchableOpacity>
         </View>
         <ScrollView style={styles.modalContainer}>
+
+          <Text style={styles.label}>Select Plan</Text>
+          <View style={styles.chipRow}>
+            {plans?.map((p: any) => (
+              <TouchableOpacity key={p.id} style={[styles.chip, selectedPlanId === p.id && styles.chipActive]} onPress={() => setSelectedPlanId(p.id)}>
+                <Text style={[styles.chipText, selectedPlanId === p.id && styles.chipTextActive]}>{p.diet_type.toUpperCase()} {p.slot_name}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
           <Text style={styles.label}>Date</Text>
           <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 8 }}>
             <View style={{ flexDirection: 'row', gap: 10 }}>
@@ -204,19 +235,12 @@ export default function VendorMenu() {
             </View>
           </ScrollView>
 
-          <Text style={styles.label}>Meal Slot</Text>
-          <View style={styles.chipRow}>
-            {SLOT_OPTIONS.map(opt => (
-              <TouchableOpacity key={opt.value} style={[styles.chip, slotName === opt.value && styles.chipActive]} onPress={() => setSlotName(opt.value)}>
-                <Text>{opt.emoji}</Text>
-                <Text style={[styles.chipText, slotName === opt.value && styles.chipTextActive]}>{opt.label}</Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
           <View style={styles.itemsHeaderRow}>
             <Text style={styles.label}>Menu Items</Text>
-            <TouchableOpacity onPress={addItem}><Text style={styles.addItemLink}>+ Add Dish</Text></TouchableOpacity>
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <TouchableOpacity onPress={copyPreviousMenu}><Text style={styles.copyLink}>📋 Copy Previous</Text></TouchableOpacity>
+              <TouchableOpacity onPress={addItem}><Text style={styles.addItemLink}>+ Add Dish</Text></TouchableOpacity>
+            </View>
           </View>
           <View style={styles.itemsBlock}>
             {menuItems.map((item, index) => (
@@ -254,8 +278,6 @@ const styles = StyleSheet.create({
   emptyIcon: { fontSize: 48, marginBottom: 16 },
   emptyTitle: { fontSize: 20, fontWeight: '700', color: '#101828', marginBottom: 8 },
   emptySub: { fontSize: 15, color: '#667085', textAlign: 'center', marginBottom: 24, lineHeight: 22 },
-  emptyBtn: { backgroundColor: '#FF6B6B', paddingHorizontal: 24, paddingVertical: 14, borderRadius: 14 },
-  emptyBtnText: { fontWeight: '700', color: '#FFF' },
   card: { backgroundColor: '#FFF', padding: 24, borderRadius: 24, marginBottom: 16, shadowColor: '#101828', shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.05, shadowRadius: 12, elevation: 3 },
   cardPast: { opacity: 0.6, backgroundColor: '#F9FAFB' },
   cardHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 16, borderBottomWidth: 1, borderBottomColor: '#F2F4F7', paddingBottom: 16 },
@@ -271,7 +293,7 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 20, fontWeight: '800', color: '#101828' },
   closeBtn: { fontSize: 16, color: '#667085', fontWeight: '600' },
   modalContainer: { flex: 1, backgroundColor: '#FFF', padding: 24 },
-  label: { fontSize: 13, fontWeight: '700', color: '#344054', marginBottom: 12, textTransform: 'uppercase', letterSpacing: 0.5 },
+  label: { fontSize: 13, fontWeight: '700', color: '#344054', marginBottom: 12, marginTop: 10, textTransform: 'uppercase', letterSpacing: 0.5 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 10, marginBottom: 8 },
   chip: { flexDirection: 'row', alignItems: 'center', gap: 6, paddingHorizontal: 14, paddingVertical: 10, backgroundColor: '#F9FAFB', borderRadius: 12, borderWidth: 1.5, borderColor: '#EAECF0' },
   chipActive: { backgroundColor: '#FEF0EC', borderColor: '#FF6B6B' },
@@ -279,6 +301,7 @@ const styles = StyleSheet.create({
   chipTextActive: { color: '#FF6B6B', fontWeight: '700' },
   itemsHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20, marginBottom: 12 },
   addItemLink: { color: '#FF6B6B', fontWeight: '700', fontSize: 14 },
+  copyLink: { color: '#101828', fontWeight: '700', fontSize: 14, marginRight: 8 },
   itemsBlock: { backgroundColor: '#F9FAFB', padding: 16, borderRadius: 16, borderWidth: 1, borderColor: '#EAECF0', marginBottom: 24 },
   dishRow: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
   input: { backgroundColor: '#FFF', borderWidth: 1, borderColor: '#EAECF0', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 15, color: '#101828' },

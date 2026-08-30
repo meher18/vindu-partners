@@ -21,6 +21,25 @@ export default function VendorDashboard() {
     },
     enabled: !!user?.id,
   });
+  
+  const { data: todaysOrders } = useQuery({
+    queryKey: ['vendor-todays-orders', kitchen?.id],
+    queryFn: async () => {
+      // Find all subscriptions for this kitchen
+      const { data: plans } = await supabase.from('subscriptions').select('id').eq('kitchen_id', kitchen?.id);
+      if (!plans || plans.length === 0) return 0;
+      
+      const planIds = plans.map(p => p.id);
+      // Count active customer subscriptions for these plans
+      const { count } = await supabase
+        .from('customer_subscriptions')
+        .select('*', { count: 'exact', head: true })
+        .in('subscription_id', planIds)
+        .eq('status', 'active');
+      return count || 0;
+    },
+    enabled: !!kitchen?.id,
+  });
 
   const createKitchen = useMutation({
     mutationFn: async () => {
@@ -102,7 +121,7 @@ export default function VendorDashboard() {
         <View style={styles.statsGrid}>
           <View style={styles.statCard}>
             <Text style={styles.statLabel}>Today's Orders</Text>
-            <Text style={styles.statValue}>0</Text>
+            <Text style={styles.statValue}>{todaysOrders || 0}</Text>
             <Text style={styles.statSub}>Meals to prepare</Text>
           </View>
           <View style={styles.statCard}>
