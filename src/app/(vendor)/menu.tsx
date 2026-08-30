@@ -462,7 +462,12 @@ export default function VendorMenuPlanner() {
             {new Date(selectedDate).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
           </Text>
         </View>
-        <TouchableOpacity style={styles.autofillBtn} onPress={() => setAutofillModalVisible(true)}>
+        <TouchableOpacity style={styles.autofillBtn} onPress={() => {
+          const all: Record<string, boolean> = {};
+          plans?.filter(p => p.status === 'active').forEach(p => all[p.id] = true);
+          setSelectedAutofillPlans(all);
+          setAutofillModalVisible(true);
+        }}>
           <Text style={styles.autofillBtnText}>🪄 Autofill Week</Text>
         </TouchableOpacity>
       </View>
@@ -830,7 +835,11 @@ export default function VendorMenuPlanner() {
               <TouchableOpacity style={styles.overlayCancelBtn} onPress={() => setAutofillModalVisible(false)} disabled={autofillWeek.isPending}>
                 <Text style={[styles.overlayCancelText, autofillWeek.isPending && { opacity: 0.5 }]}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity style={styles.overlayConfirmBtn} onPress={() => autofillWeek.mutate()} disabled={autofillWeek.isPending}>
+              <TouchableOpacity 
+                style={[styles.overlayConfirmBtn, !Object.values(selectedAutofillPlans).some(Boolean) && { opacity: 0.5 }]} 
+                onPress={() => autofillWeek.mutate()} 
+                disabled={autofillWeek.isPending || !Object.values(selectedAutofillPlans).some(Boolean)}
+              >
                 {autofillWeek.isPending ? <ActivityIndicator color="#FFF" /> : <Text style={styles.overlayConfirmText}>Run Autofill</Text>}
               </TouchableOpacity>
             </View>
