@@ -456,7 +456,7 @@ export default function VendorMenuPlanner() {
               <TouchableOpacity 
                 key={day.dateStr} 
                 style={[styles.dayCard, isSelected && styles.dayCardActive, day.isPast && !isSelected && { opacity: 0.5 }]} 
-                onPress={() => setSelectedDate(day.dateStr)}
+                onPress={() => { Vibration.vibrate(50); setSelectedDate(day.dateStr); }}
               >
                 <Text style={[styles.dayName, isSelected && styles.dayNameActive]}>{day.dayName}</Text>
                 <Text style={[styles.dayNum, isSelected && styles.dayNumActive]}>{day.dayNum}</Text>
@@ -673,7 +673,18 @@ export default function VendorMenuPlanner() {
           <View style={styles.itemsBlock}>
             {menuItems.map((item, index) => (
               <View key={index} style={styles.inputRow}>
-                <TextInput style={[styles.input, {flex: 1}]} value={item} onChangeText={(val) => updateItem(index, val)} placeholder="e.g. Kadai Paneer" placeholderTextColor="#9CA3AF" maxLength={60} autoFocus={index === 0 && !editingMenuId} />
+                <TextInput 
+                  style={[styles.input, {flex: 1}]} 
+                  value={item} 
+                  onChangeText={(val) => updateItem(index, val)} 
+                  placeholder="e.g. Kadai Paneer" 
+                  placeholderTextColor="#9CA3AF" 
+                  maxLength={60} 
+                  autoFocus={(!editingMenuId && index === 0) || (item === '' && index === menuItems.length - 1)}
+                  onSubmitEditing={addItem}
+                  blurOnSubmit={false}
+                  returnKeyType="next"
+                />
                 <TouchableOpacity onPress={() => removeItem(index)} style={styles.removeBtn}><Text style={styles.removeText}>✕</Text></TouchableOpacity>
               </View>
             ))}
@@ -727,7 +738,7 @@ export default function VendorMenuPlanner() {
                   <TouchableOpacity 
                     key={idx} 
                     style={[{width: '14.28%', aspectRatio: 1, padding: 2, alignItems: 'center', justifyContent: 'center'}, !day.isCurrentMonth && {opacity: 0.3}]}
-                    onPress={() => { setSelectedDate(day.dateStr); setMonthModalVisible(false); }}
+                    onPress={() => { Vibration.vibrate(50); setSelectedDate(day.dateStr); setMonthModalVisible(false); }}
                   >
                     <View style={[{width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center'}, day.dateStr === todayStr && {backgroundColor: '#FEF2F2'}]}>
                        <Text style={[{fontSize: 14, fontWeight: '600', color: '#101828'}, day.dateStr === selectedDate && {color: '#FF6B6B', fontWeight: '800'}]}>{day.dayNum}</Text>
