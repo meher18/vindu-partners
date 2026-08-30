@@ -695,6 +695,19 @@ export default function VendorMenuPlanner() {
             <Text style={styles.overlayTitle}>Autofill Settings</Text>
             <Text style={styles.overlaySub}>Select which plans you want to automatically roll over from last week.</Text>
             
+            <View style={{flexDirection: 'row', justifyContent: 'flex-end', gap: 16, marginBottom: 12}}>
+              <TouchableOpacity onPress={() => setSelectedAutofillPlans({})}>
+                <Text style={{color: '#667085', fontWeight: '600', fontSize: 13}}>Deselect All</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => {
+                const all: Record<string, boolean> = {};
+                plans?.filter(p => p.status === 'active').forEach(p => all[p.id] = true);
+                setSelectedAutofillPlans(all);
+              }}>
+                <Text style={{color: '#FF6B6B', fontWeight: '600', fontSize: 13}}>Select All</Text>
+              </TouchableOpacity>
+            </View>
+            
             <View style={styles.switchesContainer}>
               {plans?.filter(p => p.status === 'active').map(plan => (
                 <View key={plan.id} style={styles.switchRow}>
