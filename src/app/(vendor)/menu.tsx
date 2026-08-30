@@ -280,6 +280,23 @@ export default function VendorMenuPlanner() {
     setSelectedAutofillPlans(prev => ({ ...prev, [planId]: !prev[planId] }));
   };
 
+  const getDayStatus = (dateStr: string, dayStrShort: string) => {
+    if (holidays?.find(h => h.holiday_date === dateStr)) return 'holiday';
+    if (!plans || plans.length === 0) return 'empty';
+    if (dateStr < todayStr) return 'past';
+
+    const activePlans = plans.filter(p => p.status === 'active');
+    const operatingPlans = activePlans.filter(p => p.operating_days ? p.operating_days.includes(dayStrShort) : true);
+    
+    if (operatingPlans.length === 0) return 'inactive';
+
+    const menusPublished = menus?.filter(m => m.effective_date === dateStr).length || 0;
+
+    if (menusPublished === 0) return 'unplanned';
+    if (menusPublished < operatingPlans.length) return 'partial';
+    return 'planned';
+  };
+
   if (kLoading || pLoading) return <View style={styles.center}><ActivityIndicator size="large" color="#FF6B6B" /></View>;
 
   return (
@@ -295,6 +312,8 @@ export default function VendorMenuPlanner() {
         <ScrollView ref={scrollViewRef} horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.calendarScroll}>
           {daysWindow.map((day) => {
             const isSelected = selectedDate === day.dateStr;
+            const dayStatus = getDayStatus(day.dateStr, day.dayName.toLowerCase());
+
             return (
               <TouchableOpacity 
                 key={day.dateStr} 
@@ -303,6 +322,14 @@ export default function VendorMenuPlanner() {
               >
                 <Text style={[styles.dayName, isSelected && styles.dayNameActive]}>{day.dayName}</Text>
                 <Text style={[styles.dayNum, isSelected && styles.dayNumActive]}>{day.dayNum}</Text>
+                
+                <View style={styles.statusIndicatorRow}>
+                  {dayStatus === 'holiday' && <Text style={styles.statusEmoji}>🏖️</Text>}
+                  {dayStatus === 'unplanned' && <View style={[styles.dot, {backgroundColor: '#DC2626'}]} />}
+                  {dayStatus === 'partial' && <View style={[styles.dot, {backgroundColor: '#F59E0B'}]} />}
+                  {dayStatus === 'planned' && <View style={[styles.dot, {backgroundColor: '#10B981'}]} />}
+                </View>
+
                 {day.isToday && <View style={styles.todayDot} />}
               </TouchableOpacity>
             );
@@ -509,6 +536,9 @@ const styles = StyleSheet.create({
   dayNum: { fontSize: 18, fontWeight: '800', color: '#101828' },
   dayNumActive: { color: '#FFF' },
   todayDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: '#FF6B6B', position: 'absolute', bottom: -10 },
+  statusIndicatorRow: { flexDirection: 'row', position: 'absolute', top: 6, right: 6 },
+  dot: { width: 6, height: 6, borderRadius: 3 },
+  statusEmoji: { fontSize: 8 },
   
   body: { padding: 24 },
   dateHeading: { fontSize: 16, fontWeight: '700', color: '#667085', marginBottom: 20 },
