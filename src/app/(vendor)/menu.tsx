@@ -899,19 +899,32 @@ export default function VendorMenuPlanner() {
             <View style={{flexDirection: 'row', flexWrap: 'wrap'}}>
               {monthGrid.map((day, idx) => {
                 const dayStatus = getDayStatus(day.dateStr, day.dayName.toLowerCase());
+                const isSelected = day.dateStr === selectedDate;
+                const isToday = day.dateStr === todayStr;
                 return (
                   <TouchableOpacity 
                     key={idx} 
                     style={[{width: '14.28%', aspectRatio: 1, padding: 2, alignItems: 'center', justifyContent: 'center'}, !day.isCurrentMonth && {opacity: 0.3}]}
                     onPress={() => { Vibration.vibrate(50); setSelectedDate(day.dateStr); setMonthModalVisible(false); }}
                   >
-                    <View style={[{width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center'}, day.dateStr === todayStr && {backgroundColor: '#FEF2F2'}]}>
-                       <Text style={[{fontSize: 14, fontWeight: '600', color: '#101828'}, day.dateStr === selectedDate && {color: '#FF6B6B', fontWeight: '800'}]}>{day.dayNum}</Text>
+                    <View style={[
+                      {width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center'},
+                      isSelected && {backgroundColor: '#FF6B6B'},
+                      !isSelected && isToday && {backgroundColor: '#FEF2F2', borderWidth: 1.5, borderColor: '#FF6B6B'}
+                    ]}>
+                       <Text style={[
+                         {fontSize: 14, fontWeight: '600', color: '#101828'},
+                         isSelected && {color: '#FFF', fontWeight: '800'},
+                         !isSelected && isToday && {color: '#FF6B6B', fontWeight: '700'}
+                       ]}>{day.dayNum}</Text>
                        <View style={{flexDirection: 'row', position: 'absolute', bottom: 2}}>
-                         {dayStatus === 'holiday' && <Text style={{fontSize: 8}}>🏖️</Text>}
-                         {dayStatus === 'unplanned' && <View style={{width: 4, height: 4, borderRadius: 2, backgroundColor: '#DC2626'}} />}
-                         {dayStatus === 'partial' && <View style={{width: 4, height: 4, borderRadius: 2, backgroundColor: '#F59E0B'}} />}
-                         {dayStatus === 'planned' && <View style={{width: 4, height: 4, borderRadius: 2, backgroundColor: '#10B981'}} />}
+                         {dayStatus === 'holiday'   && <Text style={{fontSize: 8}}>🏖️</Text>}
+                         {dayStatus === 'unplanned' && <View style={{width: 4, height: 4, borderRadius: 2, backgroundColor: isSelected ? '#FFF' : '#DC2626'}} />}
+                         {dayStatus === 'partial'   && <View style={{width: 4, height: 4, borderRadius: 2, backgroundColor: isSelected ? '#FFD5A8' : '#F59E0B'}} />}
+                         {dayStatus === 'planned'   && <View style={{width: 4, height: 4, borderRadius: 2, backgroundColor: isSelected ? '#A7F3D0' : '#10B981'}} />}
+                         {dayStatus === 'delivered' && <View style={{width: 4, height: 4, borderRadius: 2, backgroundColor: isSelected ? '#A7F3D0' : '#10B981', opacity: isSelected ? 1 : 0.5}} />}
+                         {dayStatus === 'missed'    && <View style={{width: 4, height: 4, borderRadius: 2, backgroundColor: isSelected ? '#FFF' : '#DC2626', opacity: isSelected ? 1 : 0.4}} />}
+                         {dayStatus === 'inactive'  && <View style={{width: 4, height: 4, borderRadius: 2, backgroundColor: isSelected ? '#FFF' : '#D0D5DD'}} />}
                        </View>
                     </View>
                   </TouchableOpacity>
