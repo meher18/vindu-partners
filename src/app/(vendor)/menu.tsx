@@ -1,8 +1,9 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, ActivityIndicator, Modal, TextInput, Alert, Switch } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, ActivityIndicator, Modal, TextInput, Alert, Switch, RefreshControl } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
+import { useRouter } from 'expo-router';
 
 // Helper to get local date string YYYY-MM-DD instead of UTC
 const getLocalISODate = (d: Date) => {
@@ -64,6 +65,8 @@ const SHORT_DAYS = ['sun', 'mon', 'tue', 'wed', 'thu', 'fri', 'sat'];
 export default function VendorMenuPlanner() {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
+  const router = useRouter();
+  const [refreshing, setRefreshing] = useState(false);
   const daysWindow = generateDays();
   const todayStr = getLocalISODate(new Date());
 
@@ -347,6 +350,15 @@ export default function VendorMenuPlanner() {
     return 'planned';
   };
 
+  const onRefresh = React.useCallback(async () => {
+    setRefreshing(true);
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['vendor-plans', kitchen?.id] }),
+      queryClient.invalidateQueries({ queryKey: ['vendor-menus', kitchen?.id] })
+    ]);
+    setRefreshing(false);
+  }, [kitchen?.id, queryClient]);
+
   if (kLoading || pLoading) return <View style={styles.center}><ActivityIndicator size="large" color="#FF6B6B" /></View>;
 
   return (
@@ -392,7 +404,10 @@ export default function VendorMenuPlanner() {
         </ScrollView>
       </View>
 
-      <ScrollView contentContainerStyle={styles.body}>
+      <ScrollView 
+        contentContainerStyle={styles.body}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#FF6B6B" />}
+      >
         <Text style={styles.dateHeading}>{isSelectedPast ? 'Historical Menu' : 'Plan for'} {displayDate}</Text>
 
         {isHoliday ? (
@@ -406,6 +421,9 @@ export default function VendorMenuPlanner() {
             <Text style={styles.emptyIcon}>📦</Text>
             <Text style={styles.emptyTitle}>No Active Plans</Text>
             <Text style={styles.emptySub}>Create a meal plan first (like "Veg Lunch") before you can schedule a daily menu.</Text>
+            <TouchableOpacity style={{marginTop: 24, backgroundColor: '#101828', paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12}} onPress={() => router.push('/(vendor)/plans')}>
+              <Text style={{color: '#FFF', fontWeight: '700', fontSize: 14}}>Go to Plans</Text>
+            </TouchableOpacity>
           </View>
         ) : (
           (() => {
