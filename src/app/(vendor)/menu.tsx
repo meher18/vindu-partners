@@ -413,7 +413,10 @@ export default function VendorMenuPlanner() {
         <View style={styles.modalHeader}>
           <View>
             <Text style={styles.modalTitle}>{editingMenuId ? 'Edit Menu' : 'Plan Menu'}</Text>
-            <Text style={styles.modalSub}>{displayDate}</Text>
+            <Text style={styles.modalSub}>
+              {plans?.find(p => p.id === editingPlanId)?.diet_type.toUpperCase()}{' '}
+              {plans?.find(p => p.id === editingPlanId)?.slot_name.toUpperCase()} • {displayDate}
+            </Text>
           </View>
           <TouchableOpacity onPress={() => setModalVisible(false)}><Text style={styles.closeBtn}>Cancel</Text></TouchableOpacity>
         </View>
