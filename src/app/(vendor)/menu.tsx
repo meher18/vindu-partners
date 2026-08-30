@@ -314,31 +314,21 @@ export default function VendorMenuPlanner() {
             <Text style={styles.emptySub}>Create a meal plan first (like "Veg Lunch") before you can schedule a daily menu.</Text>
           </View>
         ) : (
-          plans.filter(plan => {
-            // For historical days, only show this plan if a menu was actually published for it.
-            // For future days, only show ACTIVE plans.
-            const hasMenu = menus?.some(m => m.subscription_id === plan.id && m.effective_date === selectedDate);
-            if (isSelectedPast) return hasMenu;
-            return plan.status === 'active';
-          }).map(plan => {
-            // CRITICAL: Check if the plan is supposed to operate today!
-            const isOperatingToday = plan.operating_days ? plan.operating_days.includes(selectedDayStr) : true;
+          (() => {
+            const visiblePlans = plans.filter(plan => {
+              const hasMenu = menus?.some(m => m.subscription_id === plan.id && m.effective_date === selectedDate);
+              if (isSelectedPast) return hasMenu;
+              return plan.status === 'active';
+            });
 
-            const planMenu = menus?.find(m => m.subscription_id === plan.id && m.effective_date === selectedDate);
-            const isPlanned = !!planMenu;
+            const operatingPlans = visiblePlans.filter(p => p.operating_days ? p.operating_days.includes(selectedDayStr) : true);
+            const inactivePlans = visiblePlans.filter(p => p.operating_days ? !p.operating_days.includes(selectedDayStr) : false);
 
-            if (!isOperatingToday) {
-              return (
-                <View key={plan.id} style={[styles.planCard, styles.cardInactive]}>
-                  <View style={styles.planHeader}>
-                    <Text style={styles.planTitleInactive}>{plan.diet_type.toUpperCase()} {plan.slot_name.toUpperCase()}</Text>
-                    <View style={styles.badgeInactive}>
-                      <Text style={styles.statusTextInactive}>⏸️ Inactive on {displayDayNameFull}s</Text>
-                    </View>
-                  </View>
-                </View>
-              );
-            }
+            return (
+              <View>
+                {operatingPlans.map(plan => {
+                  const planMenu = menus?.find(m => m.subscription_id === plan.id && m.effective_date === selectedDate);
+                  const isPlanned = !!planMenu;
 
             return (
               <View key={plan.id} style={[styles.planCard, isPlanned ? styles.cardPlanned : styles.cardUnplanned]}>
@@ -386,10 +376,20 @@ export default function VendorMenuPlanner() {
                       <Text style={styles.pastUnplannedText}>No menu was published for this day.</Text>
                     )}
                   </View>
+                })}
+                
+                {/* Render compact inactive summary if any */}
+                {inactivePlans.length > 0 && (
+                  <View style={styles.compactInactiveContainer}>
+                    <Text style={styles.compactInactiveTitle}>⏸️ Inactive Plans for {displayDayNameFull}</Text>
+                    {inactivePlans.map(plan => (
+                      <Text key={plan.id} style={styles.compactInactiveItem}>• {plan.diet_type.toUpperCase()} {plan.slot_name.toUpperCase()}</Text>
+                    ))}
+                  </View>
                 )}
               </View>
             );
-          })
+          })()
         )}
       </ScrollView>
 
@@ -497,19 +497,18 @@ const styles = StyleSheet.create({
   planCard: { borderRadius: 20, padding: 20, marginBottom: 16, borderWidth: 1 },
   cardPlanned: { backgroundColor: '#FFF', borderColor: '#EAECF0', shadowColor: '#101828', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.03, shadowRadius: 6, elevation: 2 },
   cardUnplanned: { backgroundColor: '#FEF2F2', borderColor: '#FEE2E2', borderStyle: 'dashed' },
-  cardInactive: { backgroundColor: '#F9FAFB', borderColor: '#EAECF0' },
-  
   planHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   planTitle: { fontSize: 16, fontWeight: '800', color: '#101828' },
-  planTitleInactive: { fontSize: 16, fontWeight: '800', color: '#9CA3AF' },
   statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
   badgePlanned: { backgroundColor: '#ECFDF3' },
   badgeUnplanned: { backgroundColor: '#FFF' },
-  badgeInactive: { backgroundColor: '#F2F4F7', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
   statusText: { fontSize: 12, fontWeight: '700' },
   statusTextPlanned: { color: '#027A48' },
   statusTextUnplanned: { color: '#DC2626' },
-  statusTextInactive: { color: '#667085', fontSize: 12, fontWeight: '600' },
+  
+  compactInactiveContainer: { padding: 16, backgroundColor: '#F9FAFB', borderRadius: 16, borderWidth: 1, borderColor: '#EAECF0', marginTop: 8, marginBottom: 16 },
+  compactInactiveTitle: { fontSize: 13, fontWeight: '700', color: '#667085', marginBottom: 8 },
+  compactInactiveItem: { fontSize: 14, fontWeight: '500', color: '#9CA3AF', marginBottom: 4, paddingLeft: 4 },
   
   plannedContent: {},
   dishRowDisplay: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
