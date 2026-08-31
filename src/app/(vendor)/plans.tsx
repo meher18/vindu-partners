@@ -75,16 +75,19 @@ export default function VendorPlans() {
     queryFn: async () => {
       if (!plans || plans.length === 0) return {};
       const planIds = plans.map(p => p.id);
+      const today = new Date();
+      const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
       const { data, error } = await supabase
         .from('customer_subscriptions')
-        .select('subscription_id')
+        .select('subscription_id, quantity')
         .in('subscription_id', planIds)
-        .eq('status', 'active');
+        .eq('status', 'active')
+        .gte('end_date', todayStr);
       if (error) return {};
       
       const counts: Record<string, number> = {};
       data.forEach(sub => {
-        counts[sub.subscription_id] = (counts[sub.subscription_id] || 0) + 1;
+        counts[sub.subscription_id] = (counts[sub.subscription_id] || 0) + (sub.quantity || 1);
       });
       return counts;
     },
@@ -246,7 +249,7 @@ export default function VendorPlans() {
               
               <View style={styles.titleRow}>
                 <Text style={styles.planTitle}>{slot?.emoji} {plan.slot_name.toUpperCase()} PLAN</Text>
-                <TouchableOpacity style={styles.deleteIconBtn} onPress={() => handleDelete(plan.id, `${plan.diet_type} ${plan.slot_name}`)}>
+                <TouchableOpacity style={styles.deleteIconBtn} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy); handleDelete(plan.id, `${plan.diet_type} ${plan.slot_name}`); }}>
                   <Text style={styles.deleteIconText}>🗑️</Text>
                 </TouchableOpacity>
               </View>
