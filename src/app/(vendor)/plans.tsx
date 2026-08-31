@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView, Alert, SafeAreaView, ActivityIndicator } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView, Alert, SafeAreaView, ActivityIndicator, RefreshControl } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
@@ -39,6 +39,16 @@ export default function VendorPlans() {
   const [price, setPrice] = useState(120);
   const [capacity, setCapacity] = useState(50);
   const [opDays, setOpDays] = useState<'7-day' | '5-day'>('7-day');
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = React.useCallback(async () => {
+    setRefreshing(true);
+    await Promise.all([
+      queryClient.refetchQueries({ queryKey: ['vendor-plans', kitchen?.id] }),
+      queryClient.refetchQueries({ queryKey: ['vendor-sub-counts', kitchen?.id] })
+    ]);
+    setRefreshing(false);
+  }, [kitchen?.id, queryClient]);
 
   const { data: kitchen } = useQuery({
     queryKey: ['vendor-kitchen', user?.id],
@@ -49,7 +59,7 @@ export default function VendorPlans() {
     enabled: !!user?.id,
   });
 
-  const { data: plans, isLoading, isError, refetch } = useQuery({
+  const { data: plans, isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: ['vendor-plans', kitchen?.id],
     queryFn: async () => {
       const { data, error } = await supabase.from('subscriptions').select('*').eq('kitchen_id', kitchen?.id).neq('status', 'cancelled');
@@ -179,14 +189,17 @@ export default function VendorPlans() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView contentContainerStyle={styles.list}>
+      <ScrollView 
+        contentContainerStyle={styles.list}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#FF6B6B" />}
+      >
         {isLoading && <ActivityIndicator style={{ marginTop: 40 }} color="#FF6B6B" />}
         {isError && (
           <View style={styles.errorWrap}>
             <Text style={styles.errorEmoji}>⚠️</Text>
             <Text style={styles.errorText}>Failed to load plans</Text>
-            <TouchableOpacity onPress={() => refetch()} style={styles.retryBtn}>
-              <Text style={styles.retryText}>Retry</Text>
+            <TouchableOpacity onPress={() => refetch()} style={[styles.retryBtn, isFetching && { opacity: 0.7 }]} disabled={isFetching}>
+              {isFetching ? <ActivityIndicator color="#FFF" /> : <Text style={styles.retryText}>Retry</Text>}
             </TouchableOpacity>
           </View>
         )}
