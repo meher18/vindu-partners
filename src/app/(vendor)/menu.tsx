@@ -8,6 +8,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
 import { useRouter } from 'expo-router';
+import * as Haptics from 'expo-haptics';
 
 // Helper to get local date string YYYY-MM-DD instead of UTC
 const getLocalISODate = (d: Date) => {
@@ -109,7 +110,7 @@ export default function VendorMenuPlanner() {
   const [focusedInputIndex, setFocusedInputIndex] = useState<number | null>(null);
 
   const selectSuggestion = (index: number, suggestion: string) => {
-    Vibration.vibrate(50);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     updateItem(index, suggestion);
     if (index === menuItems.length - 1 && index < 9) addItem();
   };
@@ -125,7 +126,7 @@ export default function VendorMenuPlanner() {
   const { data: kitchen, isLoading: kLoading, isError: kError } = useQuery({
     queryKey: ['vendor-kitchen', user?.id],
     queryFn: async () => {
-      const { data } = await supabase.from('kitchens').select('id').eq('vendor_id', user?.id).single();
+      const { data } = await supabase.from('kitchens').select('id').eq('vendor_id', user?.id).maybeSingle();
       return data;
     },
     enabled: !!user?.id,
@@ -336,7 +337,7 @@ export default function VendorMenuPlanner() {
                 .lt('effective_date', targetStr)
                 .order('effective_date', { ascending: false })
                 .limit(1)
-                .single();
+                .maybeSingle();
               
               if (deepScan) {
                 pastMenuToCopy = deepScan;
@@ -377,7 +378,7 @@ export default function VendorMenuPlanner() {
   });
 
   const handlePlanMeal = (planId: string) => {
-    Vibration.vibrate(50);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     setEditingPlanId(planId);
     setEditingMenuId(null);
     setMenuItems(['']);
@@ -387,7 +388,7 @@ export default function VendorMenuPlanner() {
 
   const handleEditMeal = (menu: any) => {
     const openModal = () => {
-      Vibration.vibrate(50);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       setEditingPlanId(menu.subscription_id);
       setEditingMenuId(menu.id);
       setMenuItems([...menu.items]);
@@ -416,7 +417,7 @@ export default function VendorMenuPlanner() {
     const lastWeekMenu = menus.find(m => m.subscription_id === editingPlanId && m.effective_date === lastWeekStr);
     
     if (lastWeekMenu) {
-      Vibration.vibrate(50);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       setMenuItems(lastWeekMenu.items);
       setMenuNotes(lastWeekMenu.notes || '');
@@ -426,7 +427,7 @@ export default function VendorMenuPlanner() {
         .sort((a, b) => new Date(b.effective_date).getTime() - new Date(a.effective_date).getTime());
         
       if (pastMenus.length > 0) {
-        Vibration.vibrate(50);
+        Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
         setMenuItems(pastMenus[0].items);
         setMenuNotes(pastMenus[0].notes || '');
@@ -442,10 +443,10 @@ export default function VendorMenuPlanner() {
           .lt('effective_date', selectedDate)
           .order('effective_date', { ascending: false })
           .limit(1)
-          .single();
+          .maybeSingle();
           
         if (deepScan) {
-          Vibration.vibrate(50);
+          Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
           setMenuItems(deepScan.items);
           setMenuNotes(deepScan.notes || '');
@@ -470,14 +471,14 @@ export default function VendorMenuPlanner() {
   
   const addItem = () => {
     if (menuItems.length < 10) {
-      Vibration.vibrate(50);
+      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
       setMenuItems([...menuItems, '']);
     }
   };
 
   const removeItem = (index: number) => {
-    Vibration.vibrate(50);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
     LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
     const newArr = menuItems.filter((_, i) => i !== index); 
     setMenuItems(newArr.length ? newArr : ['']);
@@ -573,7 +574,7 @@ export default function VendorMenuPlanner() {
               <TouchableOpacity 
                 key={day.dateStr} 
                 style={[styles.dayCard, isSelected && styles.dayCardActive, day.isPast && !isSelected && { opacity: 0.5 }]} 
-                onPress={() => { Vibration.vibrate(50); setSelectedDate(day.dateStr); }}
+                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setSelectedDate(day.dateStr); }}
               >
                 <Text style={[styles.dayName, isSelected && styles.dayNameActive]}>{day.dayName}</Text>
                 <Text style={[styles.dayNum, isSelected && styles.dayNumActive]}>{day.dayNum}</Text>
@@ -907,7 +908,7 @@ export default function VendorMenuPlanner() {
                   <TouchableOpacity 
                     key={idx} 
                     style={[{width: '14.28%', aspectRatio: 1, padding: 2, alignItems: 'center', justifyContent: 'center'}, !day.isCurrentMonth && {opacity: 0.3}]}
-                    onPress={() => { Vibration.vibrate(50); setSelectedDate(day.dateStr); setMonthModalVisible(false); }}
+                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setSelectedDate(day.dateStr); setMonthModalVisible(false); }}
                   >
                     <View style={[
                       {width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center'},
