@@ -97,8 +97,11 @@ export default function VendorDashboard() {
   const createKitchen = useMutation({
     mutationFn: async () => {
       if (!name || !address || !fssai || !radius) throw new Error("Please fill all fields");
+      const radiusInt = parseInt(radius);
+      if (isNaN(radiusInt) || radiusInt <= 0) throw new Error("Delivery radius must be a positive number");
+      
       const { data, error } = await supabase.from('kitchens').insert([{ 
-        vendor_id: user?.id, name, address, fssai_number: fssai, delivery_radius_km: parseInt(radius) 
+        vendor_id: user?.id, name, address, fssai_number: fssai, delivery_radius_km: radiusInt 
       }]).select().single();
       if (error) throw error;
       return data;
@@ -230,13 +233,25 @@ export default function VendorDashboard() {
         {holidays && holidays.length > 0 && (
           <View style={styles.holidayBanner}>
             <Text style={styles.holidayBannerTitle}>Upcoming Holidays</Text>
-            {holidays.map((h: any) => (
-              <View key={h.id} style={styles.holidayRow}>
-                <Text style={styles.holidayDate}>{new Date(h.holiday_date).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</Text>
-                <Text style={styles.holidayReason}>{h.reason}</Text>
-                <TouchableOpacity onPress={() => deleteHoliday.mutate(h.id)}><Text style={styles.holidayDelete}>✕</Text></TouchableOpacity>
-              </View>
-            ))}
+            {holidays.map((h: any) => {
+              const [y, m, d] = h.holiday_date.split('-');
+              const localDate = new Date(Number(y), Number(m) - 1, Number(d));
+              return (
+                <View key={h.id} style={styles.holidayRow}>
+                  <Text style={styles.holidayDate}>{localDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}</Text>
+                  <Text style={styles.holidayReason}>{h.reason}</Text>
+                  <TouchableOpacity onPress={() => {
+                    import('expo-haptics').then(Haptics => Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Heavy));
+                    Alert.alert('Remove Holiday?', `Are you sure you want to cancel the holiday on ${localDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}?`, [
+                      { text: 'Keep It', style: 'cancel' },
+                      { text: 'Remove', style: 'destructive', onPress: () => deleteHoliday.mutate(h.id) }
+                    ]);
+                  }}>
+                    <Text style={styles.holidayDelete}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+              );
+            })}
           </View>
         )}
 
