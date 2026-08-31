@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, SafeAreaView, ActivityIndicator, TouchableOpacity, Modal, TextInput, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, SafeAreaView, ActivityIndicator, TouchableOpacity, Modal, TextInput, Alert, RefreshControl } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
@@ -9,16 +9,28 @@ export default function VendorLedger() {
   const queryClient = useQueryClient();
   const [upiModal, setUpiModal] = useState(false);
   const [upiInput, setUpiInput] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+
+  const onRefresh = React.useCallback(async () => {
+    setRefreshing(true);
+    await queryClient.refetchQueries({ queryKey: ['vendor-ledger'] });
+    setRefreshing(false);
+  }, [queryClient]);
 
   const { data: kitchen } = useQuery({
     queryKey: ['vendor-kitchen', user?.id],
     queryFn: async () => {
       const { data } = await supabase.from('kitchens').select('id, upi_id').eq('vendor_id', user?.id).single();
-      if (data && !upiInput && data.upi_id) setUpiInput(data.upi_id);
       return data;
     },
     enabled: !!user?.id,
   });
+
+  React.useEffect(() => {
+    if (kitchen?.upi_id && !upiInput) {
+      setUpiInput(kitchen.upi_id);
+    }
+  }, [kitchen?.upi_id]);
 
   const { data: ledger, isLoading } = useQuery({
     queryKey: ['vendor-ledger', kitchen?.id],
@@ -54,7 +66,10 @@ export default function VendorLedger() {
         <Text style={styles.subtitle}>Track your payouts and rolling T+7 settlements</Text>
       </View>
 
-      <ScrollView contentContainerStyle={styles.scroll}>
+      <ScrollView 
+        contentContainerStyle={styles.scroll}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#FF6B6B" />}
+      >
         <View style={styles.balanceGrid}>
           <View style={[styles.balanceCard, styles.availableCard]}>
             <Text style={styles.balanceLabel}>Available for Payout</Text>
