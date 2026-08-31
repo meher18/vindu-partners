@@ -295,13 +295,15 @@ export default function VendorMenuPlanner() {
     mutationFn: async () => {
       if (!plans || plans.length === 0 || !menus) return;
       const inserts = [];
-      const todayObj = new Date(todayStr);
+      const todayObj = parseLocalDate(todayStr);
 
       for (let i = 0; i < 7; i++) {
-        const targetDate = new Date(todayObj); targetDate.setDate(targetDate.getDate() + i);
+        const targetDate = new Date(todayObj.getFullYear(), todayObj.getMonth(), todayObj.getDate() + i);
         const targetStr = getLocalISODate(targetDate);
-        const pastDate = new Date(targetDate); pastDate.setDate(pastDate.getDate() - 7);
+        
+        const pastDate = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate() - 7);
         const pastStr = getLocalISODate(pastDate);
+        
         const targetDayStr = SHORT_DAYS[targetDate.getDay()];
 
         if (holidays?.find(h => h.holiday_date === targetStr)) continue;
@@ -407,8 +409,8 @@ export default function VendorMenuPlanner() {
   const copyPreviousMenu = async () => {
     if (!editingPlanId || !menus) return;
     const selectedDateObj = parseLocalDate(selectedDate);
-    selectedDateObj.setDate(selectedDateObj.getDate() - 7);
-    const lastWeekStr = getLocalISODate(selectedDateObj);
+    const pastDateObj = new Date(selectedDateObj.getFullYear(), selectedDateObj.getMonth(), selectedDateObj.getDate() - 7);
+    const lastWeekStr = getLocalISODate(pastDateObj);
     const lastWeekDayName = selectedDateObj.toLocaleDateString('en-US', { weekday: 'long' });
     
     const lastWeekMenu = menus.find(m => m.subscription_id === editingPlanId && m.effective_date === lastWeekStr);
