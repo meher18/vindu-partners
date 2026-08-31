@@ -974,14 +974,25 @@ export default function VendorMenuPlanner() {
             
             <ScrollView style={[styles.switchesContainer, { maxHeight: 300 }]}>
               {plans?.filter(p => p.status === 'active').map(plan => (
-                <View key={plan.id} style={styles.switchRow}>
+                <TouchableOpacity 
+                  key={plan.id} 
+                  style={styles.switchRow} 
+                  activeOpacity={0.7}
+                  onPress={() => {
+                    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                    toggleAutofillPlan(plan.id);
+                  }}
+                >
                   <Text style={styles.switchLabel}>{plan.diet_type.toUpperCase()} {plan.slot_name.toUpperCase()}</Text>
                   <Switch 
                     value={!!selectedAutofillPlans[plan.id]} 
-                    onValueChange={() => toggleAutofillPlan(plan.id)} 
+                    onValueChange={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      toggleAutofillPlan(plan.id);
+                    }} 
                     trackColor={{ true: '#FF6B6B', false: '#EAECF0' }}
                   />
-                </View>
+                </TouchableOpacity>
               ))}
             </ScrollView>
 
