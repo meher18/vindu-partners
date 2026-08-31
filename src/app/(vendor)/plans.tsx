@@ -181,6 +181,11 @@ export default function VendorPlans() {
             if (plans && plans.length >= 6) {
               Alert.alert('Limit Reached', 'You can only have up to 6 active plans at a time.');
             } else {
+              setDietType('veg');
+              setSlotName('lunch');
+              setPrice(120);
+              setCapacity(50);
+              setOpDays('7-day');
               setModalVisible(true);
             }
           }}
@@ -209,13 +214,21 @@ export default function VendorPlans() {
             <Text style={styles.emptyIcon}>🍽️</Text>
             <Text style={styles.emptyTitle}>No Meal Plans Yet</Text>
             <Text style={styles.emptySub}>Create your first plan to start receiving orders.</Text>
-            <TouchableOpacity style={styles.emptyBtn} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setModalVisible(true); }}>
+            <TouchableOpacity style={styles.emptyBtn} onPress={() => { 
+              Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); 
+              setDietType('veg');
+              setSlotName('lunch');
+              setPrice(120);
+              setCapacity(50);
+              setOpDays('7-day');
+              setModalVisible(true); 
+            }}>
               <Text style={styles.emptyBtnText}>Create Your First Plan</Text>
             </TouchableOpacity>
           </View>
         )}
 
-        {plans?.map((plan: any) => {
+        {[...(plans || [])].sort((a, b) => a.slot_target_time.localeCompare(b.slot_target_time)).map((plan: any) => {
           const diet = DIET_OPTIONS.find(d => d.value === plan.diet_type);
           const slot = SLOT_OPTIONS.find(s => s.value === plan.slot_name);
           const subscribers = subCounts?.[plan.id] || 0;
