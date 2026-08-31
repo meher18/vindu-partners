@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 import { User } from '@supabase/supabase-js';
+import { supabase } from '@/lib/supabase';
 
 type UserRole = 'customer' | 'vendor' | 'driver' | null;
 
@@ -10,7 +11,7 @@ interface AuthState {
   setUser: (user: User | null) => void;
   setRole: (role: UserRole) => void;
   setLoading: (isLoading: boolean) => void;
-  signOut: () => void;
+  signOut: () => Promise<void>;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -20,5 +21,8 @@ export const useAuthStore = create<AuthState>((set) => ({
   setUser: (user) => set({ user }),
   setRole: (role) => set({ role }),
   setLoading: (isLoading) => set({ isLoading }),
-  signOut: () => set({ user: null, role: null }),
+  signOut: async () => {
+    await supabase.auth.signOut();
+    set({ user: null, role: null });
+  },
 }));

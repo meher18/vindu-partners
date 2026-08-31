@@ -56,13 +56,14 @@ export default function RootLayout() {
     
     if (!user && !inAuthGroup) {
       router.replace('/(auth)/login');
-    } else if (user && inAuthGroup) {
+    } else if (user) {
+      // Role-Based Access Control (RBAC) Hardening
       if (role === 'customer') {
         Alert.alert('Access Denied', 'This app is for registered partners only. Please use the Vindu app.');
         supabase.auth.signOut();
-      } else if (role === 'vendor') {
+      } else if (role === 'vendor' && segments[0] !== '(vendor)') {
         router.replace('/(vendor)');
-      } else if (role === 'driver') {
+      } else if (role === 'driver' && segments[0] !== '(driver)') {
         router.replace('/(driver)');
       }
     }
