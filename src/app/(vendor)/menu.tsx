@@ -409,52 +409,69 @@ export default function VendorMenuPlanner() {
 
   const copyPreviousMenu = async () => {
     if (!editingPlanId || !menus) return;
-    const selectedDateObj = parseLocalDate(selectedDate);
-    const pastDateObj = new Date(selectedDateObj.getFullYear(), selectedDateObj.getMonth(), selectedDateObj.getDate() - 7);
-    const lastWeekStr = getLocalISODate(pastDateObj);
-    const lastWeekDayName = selectedDateObj.toLocaleDateString('en-US', { weekday: 'long' });
-    
-    const lastWeekMenu = menus.find(m => m.subscription_id === editingPlanId && m.effective_date === lastWeekStr);
-    
-    if (lastWeekMenu) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
-      LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-      setMenuItems(lastWeekMenu.items);
-      setMenuNotes(lastWeekMenu.notes || '');
-    } else {
-      const pastMenus = menus
-        .filter(m => m.subscription_id === editingPlanId && m.effective_date < selectedDate)
-        .sort((a, b) => new Date(b.effective_date).getTime() - new Date(a.effective_date).getTime());
-        
-      if (pastMenus.length > 0) {
+
+    const executeCopy = async () => {
+      const selectedDateObj = parseLocalDate(selectedDate);
+      const pastDateObj = new Date(selectedDateObj.getFullYear(), selectedDateObj.getMonth(), selectedDateObj.getDate() - 7);
+      const lastWeekStr = getLocalISODate(pastDateObj);
+      const lastWeekDayName = selectedDateObj.toLocaleDateString('en-US', { weekday: 'long' });
+      
+      const lastWeekMenu = menus.find(m => m.subscription_id === editingPlanId && m.effective_date === lastWeekStr);
+      
+      if (lastWeekMenu) {
         Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
         LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-        setMenuItems(pastMenus[0].items);
-        setMenuNotes(pastMenus[0].notes || '');
-        Alert.alert(
-          'Notice', 
-          `We didn't find a menu for last ${lastWeekDayName}, so we copied your most recent menu instead.`
-        );
+        setMenuItems(lastWeekMenu.items);
+        setMenuNotes(lastWeekMenu.notes || '');
       } else {
-        const { data: deepScan } = await supabase
-          .from('menus')
-          .select('*')
-          .eq('subscription_id', editingPlanId)
-          .lt('effective_date', selectedDate)
-          .order('effective_date', { ascending: false })
-          .limit(1)
-          .maybeSingle();
+        const pastMenus = menus
+          .filter(m => m.subscription_id === editingPlanId && m.effective_date < selectedDate)
+          .sort((a, b) => new Date(b.effective_date).getTime() - new Date(a.effective_date).getTime());
           
-        if (deepScan) {
+        if (pastMenus.length > 0) {
           Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
           LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
-          setMenuItems(deepScan.items);
-          setMenuNotes(deepScan.notes || '');
-          Alert.alert('Notice', 'We searched your deep archives and copied your most recent menu.');
+          setMenuItems(pastMenus[0].items);
+          setMenuNotes(pastMenus[0].notes || '');
+          Alert.alert(
+            'Notice', 
+            `We didn't find a menu for last ${lastWeekDayName}, so we copied your most recent menu instead.`
+          );
         } else {
-          Alert.alert('No History', 'There are no past menus to copy from.');
+          const { data: deepScan } = await supabase
+            .from('menus')
+            .select('*')
+            .eq('subscription_id', editingPlanId)
+            .lt('effective_date', selectedDate)
+            .order('effective_date', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+            
+          if (deepScan) {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            LayoutAnimation.configureNext(LayoutAnimation.Presets.easeInEaseOut);
+            setMenuItems(deepScan.items);
+            setMenuNotes(deepScan.notes || '');
+            Alert.alert('Notice', 'We searched your deep archives and copied your most recent menu.');
+          } else {
+            Alert.alert('No History', 'There are no past menus to copy from.');
+          }
         }
       }
+    };
+
+    const hasData = menuItems.some(i => i.trim() !== '') || menuNotes.trim() !== '';
+    if (hasData) {
+      Alert.alert(
+        'Overwrite Current Menu?',
+        'This will replace the items you have currently typed. Proceed?',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Overwrite', style: 'destructive', onPress: executeCopy }
+        ]
+      );
+    } else {
+      executeCopy();
     }
   };
 
@@ -520,7 +537,7 @@ export default function VendorMenuPlanner() {
     setRefreshing(false);
   }, [kitchen?.id, queryClient]);
 
-  if (kLoading || pLoading) return (
+  if (kLoading || pLoading || mLoading) return (
     <View style={styles.center}>
       <ActivityIndicator size="large" color="#FF6B6B" style={{ marginBottom: 16 }} />
       <Text style={{ fontSize: 15, fontWeight: '600', color: '#667085' }}>Syncing Kitchen Data...</Text>
