@@ -532,8 +532,12 @@ export default function VendorMenuPlanner() {
       <Text style={{ fontSize: 40, marginBottom: 16 }}>📶</Text>
       <Text style={{ fontSize: 18, fontWeight: '700', color: '#101828', marginBottom: 8 }}>Connection Lost</Text>
       <Text style={{ fontSize: 14, color: '#667085', textAlign: 'center', paddingHorizontal: 40 }}>We couldn't reach the servers. Please check your internet connection.</Text>
-      <TouchableOpacity onPress={onRefresh} style={{ marginTop: 24, backgroundColor: '#101828', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12 }}>
-        <Text style={{ color: '#FFF', fontWeight: '700' }}>Retry Connection</Text>
+      <TouchableOpacity 
+        onPress={onRefresh} 
+        disabled={refreshing}
+        style={{ marginTop: 24, backgroundColor: '#101828', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 12, opacity: refreshing ? 0.7 : 1 }}
+      >
+        {refreshing ? <ActivityIndicator color="#FFF" /> : <Text style={{ color: '#FFF', fontWeight: '700' }}>Retry Connection</Text>}
       </TouchableOpacity>
     </View>
   );
@@ -665,17 +669,21 @@ export default function VendorMenuPlanner() {
                     ) : null}
                     {!isSelectedPast && (
                       <View style={styles.actionRow}>
-                        {!isHoliday ? (
-                          <TouchableOpacity style={styles.editBtn} onPress={() => handleEditMeal(planMenu)}>
-                            <Text style={styles.editBtnText}>✏️ Edit Menu</Text>
-                          </TouchableOpacity>
-                        ) : (
+                        {isSelectedPast ? (
+                          <View style={[styles.editBtn, { opacity: 0.5 }]}>
+                            <Text style={styles.editBtnText}>🔒 Historical Record</Text>
+                          </View>
+                        ) : isHoliday ? (
                           <View style={[styles.editBtn, { opacity: 0.5 }]}>
                             <Text style={styles.editBtnText}>🔒 Kitchen Closed</Text>
                           </View>
+                        ) : (
+                          <TouchableOpacity style={styles.editBtn} onPress={() => handleEditMeal(planMenu)}>
+                            <Text style={styles.editBtnText}>✏️ Edit Menu</Text>
+                          </TouchableOpacity>
                         )}
                         
-                        {selectedDate !== todayStr && (
+                        {!isSelectedPast && selectedDate !== todayStr && (
                           <TouchableOpacity style={styles.deleteBtn} onPress={() => Alert.alert('Delete Menu?', 'Remove this menu?', [{text: 'Cancel'}, {text: 'Delete', style: 'destructive', onPress: () => deleteMenu.mutate(planMenu.id)}])}>
                             <Text style={styles.deleteBtnText}>🗑️</Text>
                           </TouchableOpacity>
