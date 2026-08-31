@@ -16,7 +16,12 @@ export default function LoginScreen() {
 
   async function signUpWithEmail() {
     setLoading(true);
-    const { data: { session }, error } = await supabase.auth.signUp({ email, password });
+    // Explicitly request vendor role during signup so the database trigger doesn't default to customer
+    const { data: { session }, error } = await supabase.auth.signUp({ 
+      email, 
+      password,
+      options: { data: { requested_role: 'vendor' } }
+    });
     if (error) Alert.alert('Signup Failed', error.message);
     else if (!session) Alert.alert('Check Inbox', 'Please check your inbox for email verification!');
     setLoading(false);

@@ -3,10 +3,10 @@ import { useAuthStore } from '@/store/authStore';
 import { supabase } from '@/lib/supabase';
 
 export default function DriverHome() {
-  const { user } = useAuthStore();
+  const { user, signOut } = useAuthStore();
 
   const handleSignOut = () => {
-    supabase.auth.signOut();
+    signOut();
   };
 
   return (
