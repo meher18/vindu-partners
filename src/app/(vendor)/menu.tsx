@@ -509,7 +509,7 @@ export default function VendorMenuPlanner() {
     if (holidays?.find(h => h.holiday_date === dateStr)) return 'holiday';
     if (!plans || plans.length === 0) return 'empty';
 
-    const activePlans = plans.filter(p => p.status === 'active');
+    const activePlans = plans.filter(p => p.status === 'active' || p.status === 'cancelled');
     const operatingPlans = activePlans.filter(p => p.operating_days ? p.operating_days.includes(dayStrShort) : true);
 
     if (operatingPlans.length === 0) return 'inactive';
@@ -652,6 +652,7 @@ export default function VendorMenuPlanner() {
 
             const activeVisiblePlans = visiblePlans.filter(p => p.status === 'active');
             const cancelledPlans = visiblePlans.filter(p => p.status === 'cancelled');
+            const operatingCancelledPlans = cancelledPlans.filter(p => p.operating_days ? p.operating_days.includes(selectedDayStr) : true);
 
             const operatingPlans = activeVisiblePlans.filter(p => p.operating_days ? p.operating_days.includes(selectedDayStr) : true);
             const inactivePlans = activeVisiblePlans.filter(p => p.operating_days ? !p.operating_days.includes(selectedDayStr) : false);
@@ -734,10 +735,10 @@ export default function VendorMenuPlanner() {
                 )}
 
                 {/* Render cancelled plans that might need fulfillment */}
-                {cancelledPlans.length > 0 && (
+                {operatingCancelledPlans.length > 0 && (
                   <View style={{ marginTop: 24 }}>
                     <Text style={{ fontSize: 14, fontWeight: '700', color: '#B91C1C', marginBottom: 12 }}>⚠️ Cancelled Plans (Fulfill Orders)</Text>
-                    {cancelledPlans.map(plan => {
+                    {operatingCancelledPlans.map(plan => {
                       const planMenu = menus?.find(m => m.subscription_id === plan.id && m.effective_date === selectedDate);
                       const isPlanned = !!planMenu;
 
