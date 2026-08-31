@@ -4,6 +4,16 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
 
+const getLocalToday = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+const getLocalDayShort = () => {
+  const days = ['sun','mon','tue','wed','thu','fri','sat'];
+  return days[new Date().getDay()];
+};
+
 export default function VendorDashboard() {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
@@ -11,10 +21,10 @@ export default function VendorDashboard() {
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
   const [fssai, setFssai] = useState('');
-  const [radius, setRadius] = useState('5'); // Default 5km
+  const [radius, setRadius] = useState('5');
 
   const [holidayModal, setHolidayModal] = useState(false);
-  const [holidayDate, setHolidayDate] = useState(new Date().toISOString().split('T')[0]);
+  const [holidayDate, setHolidayDate] = useState(getLocalToday());
   const [holidayReason, setHolidayReason] = useState('Kitchen Closed');
 
   const { data: kitchen, isLoading } = useQuery({
@@ -40,12 +50,11 @@ export default function VendorDashboard() {
     queryKey: ['vendor-menus-dashboard', kitchen?.id],
     queryFn: async () => {
       if (!plans || plans.length === 0) return [];
-      const todayStr = new Date().toISOString().split('T')[0];
       const { data } = await supabase
         .from('menus')
         .select('subscription_id, effective_date')
         .in('subscription_id', plans.map(p => p.id))
-        .gte('effective_date', todayStr);
+        .gte('effective_date', getLocalToday());
       return data || [];
     },
     enabled: !!plans && plans.length > 0,
@@ -55,8 +64,23 @@ export default function VendorDashboard() {
     queryKey: ['vendor-todays-orders', kitchen?.id],
     queryFn: async () => {
       if (!plans || plans.length === 0) return 0;
-      const { count } = await supabase.from('customer_subscriptions').select('*', { count: 'exact', head: true }).in('subscription_id', plans.map(p => p.id)).eq('status', 'active');
-      return count || 0;
+      
+      const todayShort = getLocalDayShort();
+      const operatingPlanIds = plans
+        .filter(p => !p.operating_days || p.operating_days.includes(todayShort))
+        .map(p => p.id);
+        
+      if (operatingPlanIds.length === 0) return 0;
+
+      const { data } = await supabase
+        .from('customer_subscriptions')
+        .select('quantity')
+        .in('subscription_id', operatingPlanIds)
+        .eq('status', 'active')
+        .gte('end_date', getLocalToday());
+        
+      if (!data) return 0;
+      return data.reduce((sum, sub) => sum + (sub.quantity || 1), 0);
     },
     enabled: !!plans && plans.length > 0,
   });
@@ -87,7 +111,7 @@ export default function VendorDashboard() {
     mutationFn: async () => {
       const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
       if (!dateRegex.test(holidayDate)) throw new Error("Date must be in YYYY-MM-DD format.");
-      if (holidayDate < new Date().toISOString().split('T')[0]) throw new Error("You cannot add a holiday in the past.");
+      if (holidayDate < getLocalToday()) throw new Error("You cannot add a holiday in the past.");
       
       const { error } = await supabase.from('kitchen_holidays').insert([{ kitchen_id: kitchen?.id, holiday_date: holidayDate, reason: holidayReason }]);
       if (error) throw error;
@@ -110,10 +134,16 @@ export default function VendorDashboard() {
   let missingMenusAlert = false;
   let missingPlanNames: string[] = [];
   if (plans && menus) {
-    const tomorrow = new Date(); tomorrow.setDate(tomorrow.getDate() + 1);
-    const tmrwStr = tomorrow.toISOString().split('T')[0];
+    const tmrw = new Date();
+    tmrw.setDate(tmrw.getDate() + 1);
+    const tmrwStr = `${tmrw.getFullYear()}-${String(tmrw.getMonth() + 1).padStart(2, '0')}-${String(tmrw.getDate()).padStart(2, '0')}`;
+    const days = ['sun','mon','tue','wed','thu','fri','sat'];
+    const tmrwDayShort = days[tmrw.getDay()];
     
     plans.forEach(plan => {
+      // Don't alert if the plan doesn't operate tomorrow
+      if (plan.operating_days && !plan.operating_days.includes(tmrwDayShort)) return;
+      
       const hasMenu = menus.some(m => m.subscription_id === plan.id && m.effective_date === tmrwStr);
       if (!hasMenu) {
         missingMenusAlert = true;
