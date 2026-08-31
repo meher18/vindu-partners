@@ -801,7 +801,7 @@ export default function VendorMenuPlanner() {
               <Text style={[styles.closeBtn, submitMenu.isPending && { opacity: 0.5 }]}>Cancel</Text>
             </TouchableOpacity>
           </View>
-          <ScrollView style={styles.modalContainer} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
+          <ScrollView style={styles.modalContainer} contentContainerStyle={{ padding: 24 }} keyboardShouldPersistTaps="handled" keyboardDismissMode="on-drag">
             <View style={styles.itemsHeaderRow}>
               <Text style={styles.label}>Menu Items</Text>
               <View style={{ flexDirection: 'row', gap: 12 }}>
@@ -1075,7 +1075,7 @@ const styles = StyleSheet.create({
   modalTitle: { fontSize: 20, fontWeight: '800', color: '#101828' },
   modalSub: { fontSize: 13, color: '#667085', marginTop: 2, fontWeight: '500' },
   closeBtn: { fontSize: 16, color: '#667085', fontWeight: '600' },
-  modalContainer: { flex: 1, backgroundColor: '#FFF', padding: 24 },
+  modalContainer: { flex: 1, backgroundColor: '#FFF' },
   
   itemsHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   label: { fontSize: 14, fontWeight: '700', color: '#344054' },
