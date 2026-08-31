@@ -3,6 +3,15 @@ import { View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView, Alert, Saf
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
+import * as Haptics from 'expo-haptics';
+
+const formatTime = (timeStr: string) => {
+  if (!timeStr) return '';
+  const [h, m] = timeStr.split(':');
+  const d = new Date();
+  d.setHours(Number(h), Number(m));
+  return d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true });
+};
 
 type DietType = 'veg' | 'non-veg' | 'vegan';
 type SlotType = 'breakfast' | 'lunch' | 'dinner';
@@ -74,6 +83,11 @@ export default function VendorPlans() {
 
   const createPlan = useMutation({
     mutationFn: async () => {
+      const existing = plans?.find(p => p.diet_type === dietType && p.slot_name === slotName && p.status === 'active');
+      if (existing) {
+        throw new Error('DUPLICATE_PLAN');
+      }
+
       const slotObj = SLOT_OPTIONS.find(s => s.value === slotName)!;
       const { data, error } = await supabase.from('subscriptions').insert([{
         kitchen_id: kitchen?.id,
@@ -92,13 +106,16 @@ export default function VendorPlans() {
       if (error) throw error;
       return data;
     },
-    onSuccess: () => {
+    onSuccess: (newPlan) => {
       setModalVisible(false);
-      queryClient.invalidateQueries({ queryKey: ['vendor-plans', kitchen?.id] });
+      queryClient.setQueryData(['vendor-plans', kitchen?.id], (old: any) => {
+        if (!old) return [newPlan];
+        return [newPlan, ...old];
+      });
     },
     onError: (err: any) => {
-      if (err.message?.includes('unique_plan_per_kitchen')) {
-        Alert.alert('Duplicate Plan', `You already have a ${dietType} ${slotName} plan. Please create a different combination.`);
+      if (err.message === 'DUPLICATE_PLAN') {
+        Alert.alert('Duplicate Plan', `You already have an active ${dietType.toUpperCase()} ${slotName.toUpperCase()} plan. Please create a different combination.`);
       } else {
         Alert.alert('Error', err.message);
       }
@@ -107,12 +124,28 @@ export default function VendorPlans() {
 
   const deletePlan = useMutation({
     mutationFn: async (id: string) => {
-      // Soft delete by setting status to cancelled to preserve customer history
       const { error } = await supabase.from('subscriptions').update({ status: 'cancelled' }).eq('id', id);
       if (error) throw error;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['vendor-plans', kitchen?.id] }),
-    onError: (err: any) => Alert.alert('Error', 'Could not delete plan: ' + err.message)
+    onMutate: async (id: string) => {
+      const queryKey = ['vendor-plans', kitchen?.id];
+      await queryClient.cancelQueries({ queryKey });
+      const previousPlans = queryClient.getQueryData(queryKey);
+      
+      queryClient.setQueryData(queryKey, (old: any) => {
+        if (!old) return [];
+        return old.map((p: any) => p.id === id ? { ...p, status: 'cancelled' } : p);
+      });
+      
+      return { previousPlans, queryKey };
+    },
+    onError: (err: any, variables, context: any) => {
+      if (context?.previousPlans) queryClient.setQueryData(context.queryKey, context.previousPlans);
+      Alert.alert('Error', 'Could not delete plan: ' + err.message);
+    },
+    onSettled: (data, error, variables, context: any) => {
+      if (context?.queryKey) queryClient.invalidateQueries({ queryKey: context.queryKey });
+    }
   });
 
   const handleDelete = (id: string, name: string) => {
@@ -131,7 +164,17 @@ export default function VendorPlans() {
           <Text style={styles.title}>Meal Plans</Text>
           <Text style={styles.subtitle}>Manage your subscriptions</Text>
         </View>
-        <TouchableOpacity style={styles.addButton} onPress={() => setModalVisible(true)}>
+        <TouchableOpacity 
+          style={[styles.addButton, plans && plans.length >= 6 && { backgroundColor: '#FCA5A5' }]} 
+          onPress={() => {
+            Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+            if (plans && plans.length >= 6) {
+              Alert.alert('Limit Reached', 'You can only have up to 6 active plans at a time.');
+            } else {
+              setModalVisible(true);
+            }
+          }}
+        >
           <Text style={styles.addButtonText}>+ Add</Text>
         </TouchableOpacity>
       </View>
@@ -153,7 +196,7 @@ export default function VendorPlans() {
             <Text style={styles.emptyIcon}>🍽️</Text>
             <Text style={styles.emptyTitle}>No Meal Plans Yet</Text>
             <Text style={styles.emptySub}>Create your first plan to start receiving orders.</Text>
-            <TouchableOpacity style={styles.emptyBtn} onPress={() => setModalVisible(true)}>
+            <TouchableOpacity style={styles.emptyBtn} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setModalVisible(true); }}>
               <Text style={styles.emptyBtnText}>Create Your First Plan</Text>
             </TouchableOpacity>
           </View>
@@ -195,7 +238,7 @@ export default function VendorPlans() {
               <View style={styles.cardFooter}>
                 <View style={styles.footerItem}>
                   <Text style={styles.footerLabel}>Target Time</Text>
-                  <Text style={styles.footerValue}>{plan.slot_target_time?.slice(0, 5)}</Text>
+                  <Text style={styles.footerValue}>{formatTime(plan.slot_target_time)}</Text>
                 </View>
                 <View style={styles.footerItem}>
                   <Text style={styles.footerLabel}>Your Share</Text>
@@ -212,13 +255,13 @@ export default function VendorPlans() {
         {/* ... (Modal content remains same) */}
         <View style={styles.modalHeader}>
           <Text style={styles.modalTitle}>New Meal Plan</Text>
-          <TouchableOpacity onPress={() => setModalVisible(false)}><Text style={styles.closeBtn}>Cancel</Text></TouchableOpacity>
+          <TouchableOpacity onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setModalVisible(false); }}><Text style={styles.closeBtn}>Cancel</Text></TouchableOpacity>
         </View>
         <ScrollView style={styles.modalContainer}>
           <Text style={styles.label}>Diet Type</Text>
           <View style={styles.chipRow}>
             {DIET_OPTIONS.map(opt => (
-              <TouchableOpacity key={opt.value} style={[styles.chip, dietType === opt.value && { backgroundColor: opt.bg, borderColor: opt.color }]} onPress={() => setDietType(opt.value)}>
+              <TouchableOpacity key={opt.value} style={[styles.chip, dietType === opt.value && { backgroundColor: opt.bg, borderColor: opt.color }]} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setDietType(opt.value); }}>
                 <Text>{opt.emoji}</Text>
                 <Text style={[styles.chipText, dietType === opt.value && { color: opt.color, fontWeight: '700' }]}>{opt.label}</Text>
               </TouchableOpacity>
@@ -228,7 +271,7 @@ export default function VendorPlans() {
           <Text style={styles.label}>Meal Slot</Text>
           <View style={styles.chipRow}>
             {SLOT_OPTIONS.map(opt => (
-              <TouchableOpacity key={opt.value} style={[styles.chip, slotName === opt.value && styles.chipActive]} onPress={() => setSlotName(opt.value)}>
+              <TouchableOpacity key={opt.value} style={[styles.chip, slotName === opt.value && styles.chipActive]} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setSlotName(opt.value); }}>
                 <Text>{opt.emoji}</Text>
                 <Text style={[styles.chipText, slotName === opt.value && styles.chipTextActive]}>{opt.label}</Text>
               </TouchableOpacity>
@@ -238,7 +281,7 @@ export default function VendorPlans() {
           <Text style={styles.label}>Price per Day (₹)</Text>
           <View style={styles.chipRow}>
             {PRICE_OPTIONS.map(p => (
-              <TouchableOpacity key={p} style={[styles.chip, price === p && styles.chipActive]} onPress={() => setPrice(p)}>
+              <TouchableOpacity key={p} style={[styles.chip, price === p && styles.chipActive]} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setPrice(p); }}>
                 <Text style={[styles.chipText, price === p && styles.chipTextActive]}>₹{p}</Text>
               </TouchableOpacity>
             ))}
@@ -248,7 +291,7 @@ export default function VendorPlans() {
           <Text style={styles.label}>Daily Capacity (meals)</Text>
           <View style={styles.chipRow}>
             {[20, 30, 50, 75, 100].map(c => (
-              <TouchableOpacity key={c} style={[styles.chip, capacity === c && styles.chipActive]} onPress={() => setCapacity(c)}>
+              <TouchableOpacity key={c} style={[styles.chip, capacity === c && styles.chipActive]} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setCapacity(c); }}>
                 <Text style={[styles.chipText, capacity === c && styles.chipTextActive]}>{c}</Text>
               </TouchableOpacity>
             ))}
@@ -256,10 +299,10 @@ export default function VendorPlans() {
 
           <Text style={styles.label}>Operating Days</Text>
           <View style={styles.chipRow}>
-            <TouchableOpacity style={[styles.chip, opDays === '7-day' && styles.chipActive]} onPress={() => setOpDays('7-day')}>
+            <TouchableOpacity style={[styles.chip, opDays === '7-day' && styles.chipActive]} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setOpDays('7-day'); }}>
               <Text style={[styles.chipText, opDays === '7-day' && styles.chipTextActive]}>7 Days a Week</Text>
             </TouchableOpacity>
-            <TouchableOpacity style={[styles.chip, opDays === '5-day' && styles.chipActive]} onPress={() => setOpDays('5-day')}>
+            <TouchableOpacity style={[styles.chip, opDays === '5-day' && styles.chipActive]} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setOpDays('5-day'); }}>
               <Text style={[styles.chipText, opDays === '5-day' && styles.chipTextActive]}>Mon-Fri Only</Text>
             </TouchableOpacity>
           </View>
