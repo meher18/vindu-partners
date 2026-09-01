@@ -56,8 +56,8 @@ export default function VendorLedger() {
     onError: (err: any) => Alert.alert('Invalid', err.message)
   });
 
-  const availableBalance = ledger?.filter(l => l.status === 'available').reduce((sum, l) => sum + Number(l.net_amount || 0), 0) || 0;
   const pendingBalance = ledger?.filter(l => l.status === 'pending').reduce((sum, l) => sum + Number(l.net_amount || 0), 0) || 0;
+  const lifetimeEarnings = ledger?.reduce((sum, l) => sum + Number(l.net_amount || 0), 0) || 0;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -72,14 +72,14 @@ export default function VendorLedger() {
       >
         <View style={styles.balanceGrid}>
           <View style={[styles.balanceCard, styles.availableCard]}>
-            <Text style={styles.balanceLabel}>Available for Payout</Text>
-            {isLoading ? <ActivityIndicator color="#027A48" /> : <Text style={styles.balanceAmountAvailable}>₹{availableBalance.toFixed(0)}</Text>}
-            <Text style={styles.balanceSub}>Next payout: Tuesday</Text>
+            <Text style={styles.balanceLabel}>Unpaid Balance</Text>
+            <Text style={styles.balanceValue}>₹{pendingBalance.toFixed(0)}</Text>
+            <Text style={styles.balanceSub}>Next payout scheduled</Text>
           </View>
           <View style={[styles.balanceCard, styles.pendingCard]}>
-            <Text style={styles.balanceLabel}>Pending (T+7)</Text>
-            {isLoading ? <ActivityIndicator color="#B54708" /> : <Text style={styles.balanceAmountPending}>₹{pendingBalance.toFixed(0)}</Text>}
-            <Text style={styles.balanceSub}>Clearing this week</Text>
+            <Text style={styles.balanceLabel}>Lifetime Earnings</Text>
+            <Text style={styles.balanceValue}>₹{lifetimeEarnings.toFixed(0)}</Text>
+            <Text style={styles.balanceSub}>Total revenue generated</Text>
           </View>
         </View>
 
