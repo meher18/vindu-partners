@@ -6,24 +6,35 @@ import { Platform } from 'react-native';
 const supabaseUrl = process.env.EXPO_PUBLIC_SUPABASE_URL || 'https://dummy.supabase.co';
 const supabaseAnonKey = process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || 'dummy-key';
 
-const ExpoSecureStoreAdapter = {
+
+
+const customStorage = {
   getItem: (key: string) => {
+    if (Platform.OS === 'web') {
+      if (typeof window === 'undefined') return Promise.resolve(null);
+      try { return Promise.resolve(window.localStorage.getItem(key)); } catch (e) { return Promise.resolve(null); }
+    }
     return SecureStore.getItemAsync(key);
   },
   setItem: (key: string, value: string) => {
-    SecureStore.setItemAsync(key, value);
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined') {
+        try { window.localStorage.setItem(key, value); } catch (e) {}
+      }
+      return Promise.resolve();
+    }
+    return SecureStore.setItemAsync(key, value);
   },
   removeItem: (key: string) => {
-    SecureStore.deleteItemAsync(key);
+    if (Platform.OS === 'web') {
+      if (typeof window !== 'undefined') {
+        try { window.localStorage.removeItem(key); } catch (e) {}
+      }
+      return Promise.resolve();
+    }
+    return SecureStore.deleteItemAsync(key);
   },
 };
-
-const isServer = Platform.OS === 'web' && typeof window === 'undefined';
-const customStorage = isServer ? {
-  getItem: () => Promise.resolve(null),
-  setItem: () => Promise.resolve(),
-  removeItem: () => Promise.resolve(),
-} : ExpoSecureStoreAdapter;
 
 export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
   auth: {
