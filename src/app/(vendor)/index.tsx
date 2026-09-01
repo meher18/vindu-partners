@@ -89,11 +89,11 @@ export default function VendorDashboard() {
       // 2. Fetch skips for these dates
       const { data: skips } = await supabase
         .from('skips')
-        .select('customer_subscription_id, skip_date')
+        .select('customer_subscription_id, date')
         .in('customer_subscription_id', cSubs.map(cs => cs.id))
-        .in('skip_date', [todayStr, tomorrowStr]);
+        .in('date', [todayStr, tomorrowStr]);
 
-      const skipSet = new Set(skips?.map(s => `${s.customer_subscription_id}_${s.skip_date}`));
+      const skipSet = new Set(skips?.map(s => `${s.customer_subscription_id}_${s.date}`));
 
       const calc = (dateStr: string, dayShort: string) => {
         let total = 0;
