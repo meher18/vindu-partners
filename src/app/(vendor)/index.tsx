@@ -150,8 +150,28 @@ export default function VendorDashboard() {
     mutationFn: async () => {
       const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
       if (!dateRegex.test(holidayDate)) throw new Error("Date must be in YYYY-MM-DD format.");
-      if (holidayDate < getLocalToday()) throw new Error("You cannot add a holiday in the past.");
+      const todayStr = getLocalToday();
+      if (holidayDate < todayStr) throw new Error("You cannot add a holiday in the past.");
       
+      if (holidayDate === todayStr) {
+        if (!plans || plans.length === 0) throw new Error("Cannot verify prep times. Please add a plan first.");
+        
+        let earliestCutoff: Date | null = null;
+        for (const plan of plans) {
+          if (!plan.slot_target_time) continue;
+          const [h, m, s] = plan.slot_target_time.split(':').map(Number);
+          const target = new Date();
+          target.setHours(h, m, s, 0);
+          const cutoff = new Date(target.getTime() - 60 * 60 * 1000); // 1 hour before prep
+          if (!earliestCutoff || cutoff < earliestCutoff) {
+            earliestCutoff = cutoff;
+          }
+        }
+        
+        if (earliestCutoff && new Date() > earliestCutoff) {
+          throw new Error("Prep window has already started for today's earliest meal. You can only declare holidays for tomorrow onwards.");
+        }
+      }
       const { error } = await supabase.from('kitchen_holidays').insert([{ kitchen_id: kitchen?.id, holiday_date: holidayDate, reason: holidayReason }]);
       if (error) throw error;
     },
