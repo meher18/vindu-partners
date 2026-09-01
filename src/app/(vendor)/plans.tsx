@@ -22,6 +22,28 @@ const DIET_OPTIONS: { label: string; value: DietType; emoji: string; color: stri
   { label: 'Vegan', value: 'vegan', emoji: '🌱', color: '#059669', bg: '#ECFDF5' },
 ];
 
+
+const TIME_OPTIONS: Record<SlotType, { label: string, value: string }[]> = {
+  breakfast: [
+    { label: '8:00 AM', value: '08:00:00' },
+    { label: '8:30 AM', value: '08:30:00' },
+    { label: '9:00 AM', value: '09:00:00' },
+    { label: '9:30 AM', value: '09:30:00' }
+  ],
+  lunch: [
+    { label: '12:00 PM', value: '12:00:00' },
+    { label: '12:30 PM', value: '12:30:00' },
+    { label: '1:00 PM', value: '13:00:00' },
+    { label: '1:30 PM', value: '13:30:00' }
+  ],
+  dinner: [
+    { label: '7:30 PM', value: '19:30:00' },
+    { label: '8:00 PM', value: '20:00:00' },
+    { label: '8:30 PM', value: '20:30:00' },
+    { label: '9:00 PM', value: '21:00:00' }
+  ]
+};
+
 const SLOT_OPTIONS: { label: string; value: SlotType; emoji: string; defaultTime: string }[] = [
   { label: 'Breakfast', value: 'breakfast', emoji: '☀️', defaultTime: '09:00:00' },
   { label: 'Lunch', value: 'lunch', emoji: '🌤️', defaultTime: '13:00:00' },
@@ -36,6 +58,7 @@ export default function VendorPlans() {
   const [modalVisible, setModalVisible] = useState(false);
   const [dietType, setDietType] = useState<DietType>('veg');
   const [slotName, setSlotName] = useState<SlotType>('lunch');
+  const [slotTargetTime, setSlotTargetTime] = useState<string>('13:00:00');
   const [price, setPrice] = useState(120);
   const [capacity, setCapacity] = useState(50);
   const [opDays, setOpDays] = useState<'7-day' | '5-day'>('7-day');
@@ -107,7 +130,7 @@ export default function VendorPlans() {
         diet_type: dietType,
         duration_type: 'monthly',
         slot_name: slotName,
-        slot_target_time: slotObj.defaultTime,
+        slot_target_time: slotTargetTime,
         delivery_type: 'home_delivery',
         price_per_day: price,
         vendor_fee: price * 0.8,
@@ -300,9 +323,18 @@ export default function VendorPlans() {
           <Text style={styles.label}>Meal Slot</Text>
           <View style={styles.chipRow}>
             {SLOT_OPTIONS.map(opt => (
-              <TouchableOpacity key={opt.value} style={[styles.chip, slotName === opt.value && styles.chipActive]} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setSlotName(opt.value); }}>
+              <TouchableOpacity key={opt.value} style={[styles.chip, slotName === opt.value && styles.chipActive]} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setSlotName(opt.value); setSlotTargetTime(TIME_OPTIONS[opt.value][1].value); }}>
                 <Text>{opt.emoji}</Text>
                 <Text style={[styles.chipText, slotName === opt.value && styles.chipTextActive]}>{opt.label}</Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+
+          <Text style={styles.label}>Target Delivery Time</Text>
+          <View style={styles.chipRow}>
+            {TIME_OPTIONS[slotName].map(opt => (
+              <TouchableOpacity key={opt.value} style={[styles.chip, slotTargetTime === opt.value && styles.chipActive]} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setSlotTargetTime(opt.value); }}>
+                <Text style={[styles.chipText, slotTargetTime === opt.value && styles.chipTextActive]}>{opt.label}</Text>
               </TouchableOpacity>
             ))}
           </View>
