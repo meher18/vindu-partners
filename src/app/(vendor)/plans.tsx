@@ -64,6 +64,15 @@ export default function VendorPlans() {
   const [opDays, setOpDays] = useState<'7-day' | '5-day'>('7-day');
   const [refreshing, setRefreshing] = useState(false);
 
+  const { data: kitchen } = useQuery({
+    queryKey: ['vendor-kitchen', user?.id],
+    queryFn: async () => {
+      const { data } = await supabase.from('kitchens').select('id').eq('vendor_id', user?.id).single();
+      return data;
+    },
+    enabled: !!user?.id,
+  });
+
   const onRefresh = React.useCallback(async () => {
     setRefreshing(true);
     await Promise.all([
@@ -73,14 +82,7 @@ export default function VendorPlans() {
     setRefreshing(false);
   }, [kitchen?.id, queryClient]);
 
-  const { data: kitchen } = useQuery({
-    queryKey: ['vendor-kitchen', user?.id],
-    queryFn: async () => {
-      const { data } = await supabase.from('kitchens').select('id').eq('vendor_id', user?.id).single();
-      return data;
-    },
-    enabled: !!user?.id,
-  });
+
 
   const { data: plans, isLoading, isError, refetch, isFetching } = useQuery({
     queryKey: ['vendor-plans', kitchen?.id],

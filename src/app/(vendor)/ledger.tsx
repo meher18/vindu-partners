@@ -73,12 +73,12 @@ export default function VendorLedger() {
         <View style={styles.balanceGrid}>
           <View style={[styles.balanceCard, styles.availableCard]}>
             <Text style={styles.balanceLabel}>Unpaid Balance</Text>
-            <Text style={styles.balanceValue}>₹{pendingBalance.toFixed(0)}</Text>
+            <Text style={styles.balanceAmountAvailable}>₹{pendingBalance.toFixed(0)}</Text>
             <Text style={styles.balanceSub}>Next payout scheduled</Text>
           </View>
           <View style={[styles.balanceCard, styles.pendingCard]}>
             <Text style={styles.balanceLabel}>Lifetime Earnings</Text>
-            <Text style={styles.balanceValue}>₹{lifetimeEarnings.toFixed(0)}</Text>
+            <Text style={styles.balanceAmountPending}>₹{lifetimeEarnings.toFixed(0)}</Text>
             <Text style={styles.balanceSub}>Total revenue generated</Text>
           </View>
         </View>

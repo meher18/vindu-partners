@@ -19,6 +19,7 @@ export default function VendorDashboard() {
   const queryClient = useQueryClient();
 
   const [name, setName] = useState('');
+  const [phone, setPhone] = useState('');
   const [address, setAddress] = useState('');
   const [fssai, setFssai] = useState('');
   const [radius, setRadius] = useState('5');
@@ -125,8 +126,8 @@ export default function VendorDashboard() {
       };
 
       return {
-        today: calc(todayStr, todayDay),
-        tomorrow: calc(tomorrowStr, tomorrowDay)
+        today: calc(todayStr, todayShort),
+        tomorrow: calc(tomorrowStr, tomorrowShort)
       };
     },
     enabled: !!plans && plans.length > 0,
