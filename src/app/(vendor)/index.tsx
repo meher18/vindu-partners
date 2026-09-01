@@ -37,7 +37,7 @@ export default function VendorDashboard() {
     enabled: !!user?.id,
   });
 
-    const { data: plans } = useQuery({
+    const { data: plans, isLoading: isPlansLoading } = useQuery({
     queryKey: ['vendor-plans-dashboard', kitchen?.id],
     queryFn: async () => {
       // CRITICAL: We MUST fetch cancelled plans here too, because the vendor MUST STILL COOK 
@@ -48,7 +48,7 @@ export default function VendorDashboard() {
     enabled: !!kitchen?.id,
   });
 
-  const { data: menus } = useQuery({
+  const { data: menus, isLoading: isMenusLoading } = useQuery({
     queryKey: ['vendor-menus-dashboard', kitchen?.id],
     queryFn: async () => {
       if (!plans || plans.length === 0) return [];
@@ -62,7 +62,7 @@ export default function VendorDashboard() {
     enabled: !!plans && plans.length > 0,
   });
 
-  const { data: prepForecast } = useQuery({
+  const { data: prepForecast, isLoading: isForecastLoading } = useQuery({
     queryKey: ['vendor-prep-forecast', kitchen?.id],
     queryFn: async () => {
       if (!plans || plans.length === 0) return { today: { total: 0, breakdown: {} }, tomorrow: { total: 0, breakdown: {} } };
@@ -123,7 +123,7 @@ export default function VendorDashboard() {
     enabled: !!plans && plans.length > 0,
   });
 
-  const { data: ratingsData } = useQuery({
+  const { data: ratingsData, isLoading: isRatingsLoading } = useQuery({
     queryKey: ['vendor-ratings', kitchen?.id],
     queryFn: async () => {
       const { data } = await supabase.from('ratings')
@@ -143,7 +143,7 @@ export default function VendorDashboard() {
     enabled: !!kitchen?.id,
   });
   
-  const { data: holidays } = useQuery({
+  const { data: holidays, isLoading: isHolidaysLoading } = useQuery({
     queryKey: ['vendor-holidays', kitchen?.id],
     queryFn: async () => {
       const { data } = await supabase.from('kitchen_holidays').select('*').eq('kitchen_id', kitchen?.id).gte('holiday_date', new Date().toISOString().split('T')[0]).order('holiday_date', { ascending: true });
@@ -253,7 +253,15 @@ export default function VendorDashboard() {
     }
   }
 
-  if (isLoading) return <View style={styles.center}><ActivityIndicator size="large" color="#FF6B6B" /></View>;
+  const isEngineSyncing = isLoading || isPlansLoading || isMenusLoading || isForecastLoading || isHolidaysLoading || isRatingsLoading;
+  if (isEngineSyncing) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color="#FF6B6B" style={{ marginBottom: 16 }} />
+        <Text style={{ fontSize: 15, fontWeight: '600', color: '#667085' }}>Syncing Operations Matrix...</Text>
+      </View>
+    );
+  }
 
   // --- ONBOARDING VIEW ---
   if (!kitchen) {
