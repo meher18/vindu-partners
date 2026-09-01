@@ -63,7 +63,7 @@ export default function DispatchScreen() {
 
   const markBatchReady = useMutation({
     mutationFn: async (deliveryIds: string[]) => {
-      const { error } = await supabase.from('deliveries').update({ vendor_ready_at: new Date().toISOString(), status: 'picked_up' }).in('id', deliveryIds).is('vendor_ready_at', null);
+      const { error } = await supabase.from('deliveries').update({ vendor_ready_at: new Date().toISOString(), status: 'vendor_ready' }).in('id', deliveryIds).is('vendor_ready_at', null);
       if (error) throw error;
     },
     onSuccess: () => {
@@ -122,14 +122,14 @@ export default function DispatchScreen() {
                   style={[styles.dispatchBtn, markBatchReady.isPending && { opacity: 0.7 }]} 
                   onPress={() => {
                     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
-                    Alert.alert('Ready for Pickup?', `Are you sure all ${batch.totalQty} boxes for ${batch.slot} are packed and ready to be handed to the driver?`, [
+                    Alert.alert('Ready for Pickup?', `Are you sure all ${batch.totalQty} boxes for ${batch.slot} are packed and staged for driver pickup?`, [
                       { text: 'Cancel', style: 'cancel' },
-                      { text: 'Mark Ready', onPress: () => markBatchReady.mutate(batch.deliveryIds) }
+                      { text: 'Confirm Ready', onPress: () => markBatchReady.mutate(batch.deliveryIds) }
                     ]);
                   }}
                   disabled={markBatchReady.isPending}
                 >
-                  {markBatchReady.isPending ? <ActivityIndicator color="#FFF" /> : <Text style={styles.dispatchBtnText}>Hand Over to Driver →</Text>}
+                  {markBatchReady.isPending ? <ActivityIndicator color="#FFF" /> : <Text style={styles.dispatchBtnText}>Mark Ready for Dispatch →</Text>}
                 </TouchableOpacity>
               )}
             </View>
