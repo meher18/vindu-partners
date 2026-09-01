@@ -71,35 +71,44 @@ export default function VendorDashboard() {
       const d = new Date(todayStr);
       d.setDate(d.getDate() + 1);
       const tomorrowStr = d.toISOString().split('T')[0];
-      
-      const todayDay = new Date(todayStr).toLocaleDateString('en-US', { weekday: 'short' }).toLowerCase();
-      const tomorrowDay = new Date(tomorrowStr).toLocaleDateString('en-US', { weekday: 'short' }).toLowerCase();
 
-      // 1. Fetch all active subscriptions encompassing these dates
+      const days = ['sun','mon','tue','wed','thu','fri','sat'];
+      const todayShort = days[new Date(todayStr).getDay()];
+      const tomorrowShort = days[d.getDay()];
+
+      // 1. Fetch active customer subscriptions for our kitchen's plans
       const { data: cSubs } = await supabase
         .from('customer_subscriptions')
-        .select('id, quantity, subscription_id, start_date, end_date')
+        .select('id, subscription_id, quantity, start_date, end_date')
         .in('subscription_id', plans.map(p => p.id))
-        .eq('status', 'active')
-        .lte('start_date', tomorrowStr)
-        .gte('end_date', todayStr);
-        
-      if (!cSubs || cSubs.length === 0) return { today: { total: 0, breakdown: {} }, tomorrow: { total: 0, breakdown: {} } };
+        .eq('status', 'active');
 
       // 2. Fetch skips for these dates
       const { data: skips } = await supabase
         .from('skips')
         .select('customer_subscription_id, date')
-        .in('customer_subscription_id', cSubs.map(cs => cs.id))
+        .in('customer_subscription_id', cSubs?.map(cs => cs.id) || [])
         .in('date', [todayStr, tomorrowStr]);
 
       const skipSet = new Set(skips?.map(s => `${s.customer_subscription_id}_${s.date}`));
+
+      // 3. Fetch holidays to verify the kitchen is actually open
+      const { data: hols } = await supabase
+        .from('kitchen_holidays')
+        .select('holiday_date')
+        .eq('kitchen_id', kitchen?.id)
+        .in('holiday_date', [todayStr, tomorrowStr]);
+        
+      const holidaySet = new Set(hols?.map(h => h.holiday_date));
 
       const calc = (dateStr: string, dayShort: string) => {
         let total = 0;
         const breakdown: Record<string, number> = {};
         
-        cSubs.forEach(sub => {
+        // If the entire kitchen is closed for a holiday on this date, output absolute zero
+        if (holidaySet.has(dateStr)) return { total: 0, breakdown: {} };
+        
+        cSubs?.forEach(sub => {
           if (sub.start_date > dateStr || sub.end_date < dateStr) return; // Not active on this specific day
           if (skipSet.has(`${sub.id}_${dateStr}`)) return; // Customer skipped this day!
           
