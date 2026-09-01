@@ -37,10 +37,12 @@ export default function VendorDashboard() {
     enabled: !!user?.id,
   });
 
-  const { data: plans } = useQuery({
+    const { data: plans } = useQuery({
     queryKey: ['vendor-plans-dashboard', kitchen?.id],
     queryFn: async () => {
-      const { data } = await supabase.from('subscriptions').select('id, diet_type, slot_name').eq('kitchen_id', kitchen?.id).neq('status', 'cancelled');
+      // CRITICAL: We MUST fetch cancelled plans here too, because the vendor MUST STILL COOK 
+      // for existing customers until their subscriptions naturally expire.
+      const { data } = await supabase.from('subscriptions').select('id, diet_type, slot_name, operating_days, slot_target_time, status').eq('kitchen_id', kitchen?.id);
       return data || [];
     },
     enabled: !!kitchen?.id,
@@ -212,21 +214,21 @@ export default function VendorDashboard() {
   // Check for missing menus for tomorrow
   let missingMenusAlert = false;
   let missingPlanNames: string[] = [];
-  if (plans && menus) {
+  if (plans && menus && prepForecast?.tomorrow) {
     const tmrw = new Date();
     tmrw.setDate(tmrw.getDate() + 1);
     const tmrwStr = `${tmrw.getFullYear()}-${String(tmrw.getMonth() + 1).padStart(2, '0')}-${String(tmrw.getDate()).padStart(2, '0')}`;
-    const days = ['sun','mon','tue','wed','thu','fri','sat'];
-    const tmrwDayShort = days[tmrw.getDay()];
     
     plans.forEach(plan => {
-      // Don't alert if the plan doesn't operate tomorrow
-      if (plan.operating_days && !plan.operating_days.includes(tmrwDayShort)) return;
+      const planKey = `${plan.diet_type.toUpperCase()} ${plan.slot_name.toUpperCase()}`;
+      // ONLY alert if there are actual customers expecting to eat this meal tomorrow!
+      const customersTomorrow = prepForecast.tomorrow.breakdown[planKey] || 0;
+      if (customersTomorrow === 0) return;
       
       const hasMenu = menus.some(m => m.subscription_id === plan.id && m.effective_date === tmrwStr);
       if (!hasMenu) {
         missingMenusAlert = true;
-        missingPlanNames.push(`${plan.diet_type.toUpperCase()} ${plan.slot_name}`);
+        missingPlanNames.push(planKey);
       }
     });
   }
