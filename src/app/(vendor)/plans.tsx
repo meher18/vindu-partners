@@ -93,6 +93,16 @@ export default function VendorPlans() {
   });
 
   // Query to count active subscribers per plan
+  // Fetch dynamic commission rates from the backend
+  const { data: config } = useQuery({
+    queryKey: ['platform-config'],
+    queryFn: async () => {
+      const { data, error } = await supabase.from('platform_config').select('*').single();
+      if (error) throw error;
+      return data;
+    }
+  });
+
   const { data: subCounts } = useQuery({
     queryKey: ['vendor-sub-counts', kitchen?.id],
     queryFn: async () => {
