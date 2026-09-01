@@ -74,13 +74,28 @@ export default function VendorDashboard() {
 
       const { data } = await supabase
         .from('customer_subscriptions')
-        .select('quantity')
+        .select('quantity, subscription_id')
         .in('subscription_id', operatingPlanIds)
         .eq('status', 'active')
         .gte('end_date', getLocalToday());
         
-      if (!data) return 0;
-      return data.reduce((sum, sub) => sum + (sub.quantity || 1), 0);
+      if (!data) return { total: 0, breakdown: {} };
+      
+      let total = 0;
+      const breakdown: Record<string, number> = {};
+      
+      data.forEach(sub => {
+        const qty = sub.quantity || 1;
+        total += qty;
+        
+        const plan = plans.find(p => p.id === sub.subscription_id);
+        if (plan) {
+          const key = `${plan.diet_type.toUpperCase()} ${plan.slot_name.toUpperCase()}`;
+          breakdown[key] = (breakdown[key] || 0) + qty;
+        }
+      });
+      
+      return { total, breakdown };
     },
     enabled: !!plans && plans.length > 0,
   });
@@ -256,10 +271,20 @@ export default function VendorDashboard() {
         )}
 
         <View style={styles.statsGrid}>
-          <View style={styles.statCard}>
+          <View style={[styles.statCard, { paddingBottom: 12 }]}>
             <Text style={styles.statLabel}>Today's Orders</Text>
-            <Text style={styles.statValue}>{todaysOrders || 0}</Text>
-            <Text style={styles.statSub}>Meals to prepare</Text>
+            <Text style={styles.statValue}>{todaysOrders?.total || 0}</Text>
+            <Text style={styles.statSub}>Total meals to prepare</Text>
+            {todaysOrders?.breakdown && Object.keys(todaysOrders.breakdown).length > 0 && (
+              <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#F3F4F6', gap: 6 }}>
+                {Object.entries(todaysOrders.breakdown).map(([key, qty]) => (
+                  <View key={key} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                    <Text style={{ fontSize: 13, color: '#374151', fontWeight: '600' }}>{key}</Text>
+                    <Text style={{ fontSize: 13, color: '#FF6B6B', fontWeight: '800' }}>{qty}</Text>
+                  </View>
+                ))}
+              </View>
+            )}
           </View>
           <View style={styles.statCard}>
             <Text style={styles.statLabel}>Active Plans</Text>
