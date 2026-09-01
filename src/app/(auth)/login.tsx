@@ -14,13 +14,15 @@ export default function LoginScreen() {
     setLoading(false);
   }
 
+  const [requestedRole, setRequestedRole] = useState<'vendor' | 'driver'>('vendor');
+
   async function signUpWithEmail() {
     setLoading(true);
-    // Explicitly request vendor role during signup so the database trigger doesn't default to customer
+    // Explicitly pass the selected role during signup so the database trigger parses it correctly
     const { data: { session }, error } = await supabase.auth.signUp({ 
       email, 
       password,
-      options: { data: { requested_role: 'vendor' } }
+      options: { data: { requested_role: requestedRole } }
     });
     if (error) Alert.alert('Signup Failed', error.message);
     else if (!session) Alert.alert('Check Inbox', 'Please check your inbox for email verification!');
@@ -61,7 +63,24 @@ export default function LoginScreen() {
               autoCapitalize="none"
             />
           </View>
-
+          
+          <View style={styles.inputGroup}>
+            <Text style={styles.label}>I am signing up as a...</Text>
+            <View style={{ flexDirection: 'row', gap: 12, marginTop: 4 }}>
+              <TouchableOpacity 
+                style={[{ flex: 1, padding: 14, borderRadius: 12, borderWidth: 1.5, borderColor: '#E5E7EB', alignItems: 'center' }, requestedRole === 'vendor' && { borderColor: '#FF6B6B', backgroundColor: '#FEF2F2' }]} 
+                onPress={() => setRequestedRole('vendor')}
+              >
+                <Text style={[{ fontWeight: '700', color: '#6B7280' }, requestedRole === 'vendor' && { color: '#DC2626' }]}>🧑‍🍳 Kitchen</Text>
+              </TouchableOpacity>
+              <TouchableOpacity 
+                style={[{ flex: 1, padding: 14, borderRadius: 12, borderWidth: 1.5, borderColor: '#E5E7EB', alignItems: 'center' }, requestedRole === 'driver' && { borderColor: '#16A34A', backgroundColor: '#F0FDF4' }]} 
+                onPress={() => setRequestedRole('driver')}
+              >
+                <Text style={[{ fontWeight: '700', color: '#6B7280' }, requestedRole === 'driver' && { color: '#16A34A' }]}>🛵 Driver</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
           <TouchableOpacity 
             style={[styles.button, styles.primaryButton, loading && styles.buttonDisabled]} 
             onPress={signInWithEmail} 
