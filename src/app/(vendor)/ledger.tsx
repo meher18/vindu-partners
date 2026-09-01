@@ -56,8 +56,8 @@ export default function VendorLedger() {
     onError: (err: any) => Alert.alert('Invalid', err.message)
   });
 
-  const availableBalance = ledger?.filter(l => l.status === 'available').reduce((sum, l) => sum + l.amount, 0) || 0;
-  const pendingBalance = ledger?.filter(l => l.status === 'pending').reduce((sum, l) => sum + l.amount, 0) || 0;
+  const availableBalance = ledger?.filter(l => l.status === 'available').reduce((sum, l) => sum + Number(l.net_amount || 0), 0) || 0;
+  const pendingBalance = ledger?.filter(l => l.status === 'pending').reduce((sum, l) => sum + Number(l.net_amount || 0), 0) || 0;
 
   return (
     <SafeAreaView style={styles.safe}>
@@ -110,17 +110,18 @@ export default function VendorLedger() {
           const date = new Date(tx.created_at).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
           const isPending = tx.status === 'pending';
           const isPaid = tx.status === 'paid';
+          const val = Number(tx.net_amount || 0);
           return (
             <View key={tx.id} style={styles.txRow}>
               <View style={[styles.txIconWrap, isPaid ? styles.iconPaid : isPending ? styles.iconPending : styles.iconAvailable]}>
                 <Text style={styles.txIcon}>{isPaid ? '✓' : isPending ? '⏳' : '💰'}</Text>
               </View>
               <View style={styles.txInfo}>
-                <Text style={styles.txDesc}>{tx.description}</Text>
+                <Text style={styles.txDesc}>Meal Delivery Payout</Text>
                 <Text style={styles.txDate}>{date} · {tx.status.toUpperCase()}</Text>
               </View>
-              <Text style={[styles.txAmount, tx.amount < 0 && styles.txNegative]}>
-                {tx.amount > 0 ? '+' : ''}₹{Math.abs(tx.amount).toFixed(0)}
+              <Text style={[styles.txAmount, val < 0 && styles.txNegative]}>
+                {val > 0 ? '+' : ''}₹{Math.abs(val).toFixed(0)}
               </Text>
             </View>
           );
