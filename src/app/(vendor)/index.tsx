@@ -154,10 +154,15 @@ export default function VendorDashboard() {
 
   const createKitchen = useMutation({
     mutationFn: async () => {
-      if (!name || !address || !fssai || !radius) throw new Error("Please fill all fields");
+      if (!name || !address || !fssai || !radius || !phone) throw new Error("Please fill all fields");
       const radiusInt = parseInt(radius);
       if (isNaN(radiusInt) || radiusInt <= 0) throw new Error("Delivery radius must be a positive number");
+      if (phone.length < 10) throw new Error("Please enter a valid 10-digit phone number");
       
+      // Update the vendor's profile with their dispatch contact number
+      const { error: pErr } = await supabase.from('profiles').update({ phone }).eq('id', user?.id);
+      if (pErr) throw pErr;
+
       const { data, error } = await supabase.from('kitchens').insert([{ 
         vendor_id: user?.id, name, address, fssai_number: fssai, delivery_radius_km: radiusInt 
       }]).select().single();
@@ -246,6 +251,11 @@ export default function VendorDashboard() {
           </View>
           
           <View style={styles.formCard}>
+            <View style={styles.inputGroup}>
+              <Text style={styles.label}>Dispatch Phone Number</Text>
+              <TextInput style={styles.input} value={phone} onChangeText={setPhone} placeholder="10-digit mobile number" placeholderTextColor="#98A2B3" keyboardType="phone-pad" maxLength={15} />
+              <Text style={styles.helpText}>Drivers will call this number if they cannot find your kitchen.</Text>
+            </View>
             <View style={styles.inputGroup}>
               <Text style={styles.label}>Kitchen Name</Text>
               <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="e.g. Annapurna Tiffins" placeholderTextColor="#98A2B3" />
