@@ -35,7 +35,7 @@ export default function DispatchScreen() {
       if (!deliveries) return [];
 
       // Group by slot
-      const batches: Record<string, { slot: string, totalQty: number, readyCount: number, deliveryIds: string[], dietBreakdown: Record<string, number> }> = {};
+      const batches: Record<string, { slot: string, totalQty: number, readyCount: number, pickedUpCount: number, deliveryIds: string[], dietBreakdown: Record<string, number> }> = {};
 
       deliveries.forEach(del => {
         const cSub = cSubs.find(cs => cs.id === del.customer_subscription_id);
@@ -44,13 +44,14 @@ export default function DispatchScreen() {
         if (!plan) return;
 
         const slot = plan.slot_name.toUpperCase();
-        if (!batches[slot]) batches[slot] = { slot, totalQty: 0, readyCount: 0, deliveryIds: [], dietBreakdown: {} };
+        if (!batches[slot]) batches[slot] = { slot, totalQty: 0, readyCount: 0, pickedUpCount: 0, deliveryIds: [], dietBreakdown: {} };
         
         const qty = cSub.quantity || 1;
         batches[slot].totalQty += qty;
         batches[slot].deliveryIds.push(del.id);
         
         if (del.vendor_ready_at) batches[slot].readyCount += qty;
+        if (del.status === 'picked_up' || del.status === 'delivered') batches[slot].pickedUpCount += qty;
 
         const diet = plan.diet_type.toUpperCase();
         batches[slot].dietBreakdown[diet] = (batches[slot].dietBreakdown[diet] || 0) + qty;
@@ -94,6 +95,8 @@ export default function DispatchScreen() {
 
         {dispatchBatches?.map(batch => {
           const isFullyReady = batch.readyCount >= batch.totalQty;
+          const isFullyPickedUp = batch.pickedUpCount >= batch.totalQty;
+          
           return (
             <View key={batch.slot} style={styles.card}>
               <View style={styles.cardHeader}>
@@ -101,10 +104,12 @@ export default function DispatchScreen() {
                   <Text style={styles.slotName}>{batch.slot} BATCH</Text>
                   <Text style={styles.qtyText}>{batch.totalQty} Total Meals</Text>
                 </View>
-                {isFullyReady ? (
-                  <View style={styles.readyBadge}><Text style={styles.readyBadgeText}>HANDED OVER</Text></View>
+                {isFullyPickedUp ? (
+                  <View style={[styles.readyBadge, { backgroundColor: '#EFF6FF' }]}><Text style={[styles.readyBadgeText, { color: '#1D4ED8' }]}>✅ DISPATCHED</Text></View>
+                ) : isFullyReady ? (
+                  <View style={styles.readyBadge}><Text style={styles.readyBadgeText}>📦 STAGED FOR PICKUP</Text></View>
                 ) : (
-                  <View style={styles.pendingBadge}><Text style={styles.pendingBadgeText}>COOKING</Text></View>
+                  <View style={styles.pendingBadge}><Text style={styles.pendingBadgeText}>🔥 COOKING</Text></View>
                 )}
               </View>
 
