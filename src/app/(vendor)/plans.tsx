@@ -133,7 +133,7 @@ export default function VendorPlans() {
         slot_target_time: slotTargetTime,
         delivery_type: 'home_delivery',
         price_per_day: price,
-        vendor_fee: price * 0.8,
+        vendor_fee: price * 0.7,
         delivery_fee: price * 0.2,
         capacity,
         operating_days: opDays === '7-day' ? ['mon','tue','wed','thu','fri','sat','sun'] : ['mon','tue','wed','thu','fri'],
