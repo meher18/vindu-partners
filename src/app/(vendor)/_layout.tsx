@@ -36,6 +36,13 @@ export default function VendorLayout() {
         }}
       />
       <Tabs.Screen
+        name="dispatch"
+        options={{
+          title: 'Dispatch',
+          tabBarLabel: 'Dispatch',
+        }}
+      />
+      <Tabs.Screen
         name="ledger"
         options={{
           title: 'Ledger',
