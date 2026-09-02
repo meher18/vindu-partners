@@ -145,8 +145,8 @@ export default function VendorPlans() {
         slot_target_time: slotTargetTime,
         delivery_type: 'home_delivery',
         price_per_day: price,
-        vendor_fee: price * 0.7,
-        delivery_fee: price * 0.2,
+        vendor_fee: price * (config?.vendor_split_pct || 0.7),
+        delivery_fee: price * (config?.driver_split_pct || 0.2),
         capacity,
         operating_days: opDays === '7-day' ? ['mon','tue','wed','thu','fri','sat','sun'] : ['mon','tue','wed','thu','fri'],
         status: 'active'
@@ -370,7 +370,20 @@ export default function VendorPlans() {
               </TouchableOpacity>
             ))}
           </View>
-          <Text style={styles.priceNote}>Your share: ₹{(price * 0.8).toFixed(0)} · Delivery: ₹{(price * 0.2).toFixed(0)}</Text>
+          <View style={{ backgroundColor: '#F9FAFB', padding: 16, borderRadius: 12, marginTop: 12, marginBottom: 24, borderWidth: 1, borderColor: '#F3F4F6' }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+              <Text style={{ fontSize: 14, color: '#6B7280' }}>Your Net Share ({((config?.vendor_split_pct || 0.7) * 100).toFixed(0)}%)</Text>
+              <Text style={{ fontSize: 14, fontWeight: '700', color: '#10B981' }}>₹{(price * (config?.vendor_split_pct || 0.7)).toFixed(0)}</Text>
+            </View>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+              <Text style={{ fontSize: 14, color: '#6B7280' }}>Driver Payout ({((config?.driver_split_pct || 0.2) * 100).toFixed(0)}%)</Text>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: '#374151' }}>₹{(price * (config?.driver_split_pct || 0.2)).toFixed(0)}</Text>
+            </View>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <Text style={{ fontSize: 14, color: '#6B7280' }}>Platform Fee</Text>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: '#374151' }}>₹{(price * (1 - (config?.vendor_split_pct || 0.7) - (config?.driver_split_pct || 0.2))).toFixed(0)}</Text>
+            </View>
+          </View>
 
           <Text style={styles.label}>Daily Capacity (meals)</Text>
           <View style={styles.chipRow}>
