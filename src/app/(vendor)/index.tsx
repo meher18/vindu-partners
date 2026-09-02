@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, SafeAreaView, ActivityIndicator, Modal, Alert } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TextInput, TouchableOpacity, SafeAreaView, ActivityIndicator, Modal, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
@@ -290,7 +290,8 @@ export default function VendorDashboard() {
   if (!kitchen) {
     return (
       <SafeAreaView style={styles.safeArea}>
-        <ScrollView contentContainerStyle={styles.container}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+          <ScrollView contentContainerStyle={styles.container}>
           <View style={styles.header}>
             <Text style={styles.title}>Welcome to Vindu</Text>
             <Text style={styles.subtitle}>Let's set up your kitchen profile to get started.</Text>
@@ -324,7 +325,8 @@ export default function VendorDashboard() {
               {createKitchen.isPending ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitBtnText}>Create Kitchen</Text>}
             </TouchableOpacity>
           </View>
-        </ScrollView>
+          </ScrollView>
+        </KeyboardAvoidingView>
       </SafeAreaView>
     );
   }
@@ -533,7 +535,8 @@ export default function VendorDashboard() {
 
       {/* HOLIDAY MODAL */}
       <Modal visible={holidayModal} animationType="slide" presentationStyle="formSheet">
-        <View style={{ flex: 1, backgroundColor: '#FFF', padding: 24, paddingTop: 40 }}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+          <View style={{ flex: 1, backgroundColor: '#FFF', padding: 24, paddingTop: 40 }}>
           <Text style={styles.title}>Mark Kitchen Closed</Text>
           <Text style={styles.subtitle}>Select a date to pause all subscriptions automatically.</Text>
           
@@ -549,7 +552,8 @@ export default function VendorDashboard() {
           <TouchableOpacity style={{ marginTop: 20, alignItems: 'center' }} onPress={() => setHolidayModal(false)}>
             <Text style={{ color: '#667085', fontWeight: '700', fontSize: 16 }}>Cancel</Text>
           </TouchableOpacity>
-        </View>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );

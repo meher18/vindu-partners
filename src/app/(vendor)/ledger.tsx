@@ -166,7 +166,8 @@ export default function VendorLedger() {
 
       {/* UPI Update Modal */}
       <Modal visible={upiModal} animationType="slide" presentationStyle="formSheet">
-        <View style={{ flex: 1, backgroundColor: '#FFF', padding: 24, paddingTop: 40 }}>
+        <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+          <View style={{ flex: 1, backgroundColor: '#FFF', padding: 24, paddingTop: 40 }}>
           <Text style={{ fontSize: 24, fontWeight: '800', marginBottom: 8 }}>Update Payout Settings</Text>
           <Text style={{ color: '#667085', marginBottom: 24 }}>Enter your UPI ID where you want to receive your T+7 settlements.</Text>
           
@@ -189,7 +190,8 @@ export default function VendorLedger() {
           <TouchableOpacity style={{ marginTop: 20, alignItems: 'center' }} onPress={() => setUpiModal(false)}>
             <Text style={{ color: '#667085', fontWeight: '700', fontSize: 16 }}>Cancel</Text>
           </TouchableOpacity>
-        </View>
+          </View>
+        </KeyboardAvoidingView>
       </Modal>
     </SafeAreaView>
   );
