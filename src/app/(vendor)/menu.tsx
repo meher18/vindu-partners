@@ -211,6 +211,7 @@ export default function VendorMenuPlanner() {
       if (filteredItems.length > 10) throw new Error("Maximum 10 items allowed per menu.");
 
       const payload: any = {
+        kitchen_id: kitchen?.id,
         subscription_id: editingPlanId,
         effective_date: selectedDate,
         items: filteredItems,
@@ -347,6 +348,7 @@ export default function VendorMenuPlanner() {
 
           if (pastMenuToCopy) {
             inserts.push({
+              kitchen_id: kitchen?.id,
               subscription_id: plan.id,
               effective_date: targetStr,
               items: pastMenuToCopy.items,
