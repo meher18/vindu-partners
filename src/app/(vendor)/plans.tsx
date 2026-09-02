@@ -131,7 +131,17 @@ export default function VendorPlans() {
 
   const createPlan = useMutation({
     mutationFn: async () => {
-      const existing = plans?.find(p => p.diet_type === dietType && p.slot_name === slotName && p.status === 'active');
+      // Comprehensive validation
+      if (!kitchen?.id) throw new Error('Kitchen not found. Please refresh.');
+      if (capacity < 5 || capacity > 500) throw new Error('Capacity must be between 5 and 500 meals');
+      if (price < 50 || price > 500) throw new Error('Price must be between ₹50 and ₹500 per day');
+      
+      // Check for duplicate ACTIVE plan (loophole fix)
+      const existing = plans?.find(p => 
+        p.diet_type === dietType && 
+        p.slot_name === slotName && 
+        p.status === 'active'
+      );
       if (existing) {
         throw new Error('DUPLICATE_PLAN');
       }
@@ -145,33 +155,39 @@ export default function VendorPlans() {
         slot_target_time: slotTargetTime,
         delivery_type: 'home_delivery',
         price_per_day: price,
-        vendor_fee: price * (config?.vendor_split_pct || 0.7),
-        delivery_fee: price * (config?.driver_split_pct || 0.2),
+        vendor_fee: Math.round(price * (config?.vendor_split_pct || 0.7) * 100) / 100,
+        delivery_fee: Math.round(price * (config?.driver_split_pct || 0.2) * 100) / 100,
         capacity,
         operating_days: opDays === '7-day' ? ['mon','tue','wed','thu','fri','sat','sun'] : ['mon','tue','wed','thu','fri'],
         status: 'active'
       }]).select().single();
+      
       if (error) throw error;
       return data;
     },
     onSuccess: (newPlan) => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       setModalVisible(false);
       queryClient.setQueryData(['vendor-plans', kitchen?.id], (old: any) => {
         if (!old) return [newPlan];
         return [newPlan, ...old];
       });
+      Alert.alert('Success!', `Your ${dietType} ${slotName} plan is now live. Customers can subscribe!`);
     },
     onError: (err: any) => {
       if (err.message === 'DUPLICATE_PLAN') {
-        Alert.alert('Duplicate Plan', `You already have an active ${dietType.toUpperCase()} ${slotName.toUpperCase()} plan. Please create a different combination.`);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        Alert.alert('Duplicate Plan', `You already have an active ${dietType.toUpperCase()} ${slotName.toUpperCase()} plan. Delete it first before creating a new one.`);
       } else {
-        Alert.alert('Error', err.message);
+        Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+        Alert.alert('Error Creating Plan', err.message);
       }
     }
   });
 
   const deletePlan = useMutation({
     mutationFn: async (id: string) => {
+      if (!id) throw new Error('Plan not found');
       const { error } = await supabase.from('subscriptions').update({ status: 'cancelled' }).eq('id', id);
       if (error) throw error;
     },
@@ -182,14 +198,19 @@ export default function VendorPlans() {
       
       queryClient.setQueryData(queryKey, (old: any) => {
         if (!old) return [];
-        return old.map((p: any) => p.id === id ? { ...p, status: 'cancelled' } : p);
+        return old.filter((p: any) => p.id !== id); // Instantly remove from UI
       });
       
       return { previousPlans, queryKey };
     },
+    onSuccess: () => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert('Plan Removed', 'Existing subscribers can finish their term, but new customers will not see this plan.');
+    },
     onError: (err: any, variables, context: any) => {
       if (context?.previousPlans) queryClient.setQueryData(context.queryKey, context.previousPlans);
-      Alert.alert('Error', 'Could not delete plan: ' + err.message);
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert('Unable to Remove Plan', err.message || 'Please try again.');
     },
     onSettled: (data, error, variables, context: any) => {
       if (context?.queryKey) queryClient.invalidateQueries({ queryKey: context.queryKey });
@@ -375,13 +396,9 @@ export default function VendorPlans() {
               <Text style={{ fontSize: 14, color: '#6B7280' }}>Your Net Share ({((config?.vendor_split_pct || 0.7) * 100).toFixed(0)}%)</Text>
               <Text style={{ fontSize: 14, fontWeight: '700', color: '#10B981' }}>₹{(price * (config?.vendor_split_pct || 0.7)).toFixed(0)}</Text>
             </View>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
-              <Text style={{ fontSize: 14, color: '#6B7280' }}>Driver Payout ({((config?.driver_split_pct || 0.2) * 100).toFixed(0)}%)</Text>
-              <Text style={{ fontSize: 14, fontWeight: '600', color: '#374151' }}>₹{(price * (config?.driver_split_pct || 0.2)).toFixed(0)}</Text>
-            </View>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <Text style={{ fontSize: 14, color: '#6B7280' }}>Platform Fee</Text>
-              <Text style={{ fontSize: 14, fontWeight: '600', color: '#374151' }}>₹{(price * (1 - (config?.vendor_split_pct || 0.7) - (config?.driver_split_pct || 0.2))).toFixed(0)}</Text>
+              <Text style={{ fontSize: 14, color: '#6B7280' }}>Platform Deduction ({((1 - (config?.vendor_split_pct || 0.7)) * 100).toFixed(0)}%)</Text>
+              <Text style={{ fontSize: 14, fontWeight: '600', color: '#374151' }}>₹{(price * (1 - (config?.vendor_split_pct || 0.7))).toFixed(0)}</Text>
             </View>
           </View>
 
