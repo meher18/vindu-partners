@@ -277,12 +277,11 @@ export default function VendorDashboard() {
     }
   }
 
-  const isEngineSyncing = isLoading || isPlansLoading || isMenusLoading || isForecastLoading || isHolidaysLoading || isRatingsLoading;
-  if (isEngineSyncing) {
+  if (isLoading) {
     return (
       <View style={styles.center}>
         <ActivityIndicator size="large" color="#FF6B6B" style={{ marginBottom: 16 }} />
-        <Text style={{ fontSize: 15, fontWeight: '600', color: '#667085' }}>Syncing Operations Matrix...</Text>
+        <Text style={{ fontSize: 15, fontWeight: '600', color: '#667085' }}>Connecting to Kitchen...</Text>
       </View>
     );
   }
@@ -331,6 +330,15 @@ export default function VendorDashboard() {
   }
 
   // --- DASHBOARD VIEW ---
+  if (isPlansLoading || isMenusLoading || isForecastLoading || isHolidaysLoading || isRatingsLoading) {
+    return (
+      <View style={styles.center}>
+        <ActivityIndicator size="large" color="#FF6B6B" style={{ marginBottom: 16 }} />
+        <Text style={{ fontSize: 15, fontWeight: '600', color: '#667085' }}>Syncing Operations Matrix...</Text>
+      </View>
+    );
+  }
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <ScrollView contentContainerStyle={styles.dashboardContainer}>
