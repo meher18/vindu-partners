@@ -110,25 +110,33 @@ export default function VendorDashboard() {
 
       const calc = (dateStr: string, dayShort: string) => {
         let total = 0;
+        let revenue = 0;
+        let capacity = 0;
         const breakdown: Record<string, number> = {};
         
-        // If the entire kitchen is closed for a holiday on this date, output absolute zero
-        if (holidaySet.has(dateStr)) return { total: 0, breakdown: {} };
+        if (holidaySet.has(dateStr)) return { total: 0, breakdown: {}, revenue: 0, capacity: 0 };
         
+        plans.forEach(p => {
+          if (p.status === 'active' && (!p.operating_days || p.operating_days.includes(dayShort))) {
+            capacity += (p.capacity || 0);
+          }
+        });
+
         cSubs?.forEach(sub => {
-          if (sub.start_date > dateStr || sub.end_date < dateStr) return; // Not active on this specific day
-          if (skipSet.has(`${sub.id}_${dateStr}`)) return; // Customer skipped this day!
+          if (sub.start_date > dateStr || sub.end_date < dateStr) return; 
+          if (skipSet.has(`${sub.id}_${dateStr}`)) return; 
           
           const plan = plans.find(p => p.id === sub.subscription_id);
           if (!plan) return;
-          if (plan.operating_days && !plan.operating_days.includes(dayShort)) return; // Kitchen closed for this plan today
+          if (plan.operating_days && !plan.operating_days.includes(dayShort)) return; 
           
           const qty = sub.quantity || 1;
           total += qty;
+          revenue += (plan.vendor_fee || 0) * qty;
           const key = `${plan.diet_type.toUpperCase()} ${plan.slot_name.toUpperCase()}`;
           breakdown[key] = (breakdown[key] || 0) + qty;
         });
-        return { total, breakdown };
+        return { total, breakdown, revenue, capacity };
       };
 
       return {
