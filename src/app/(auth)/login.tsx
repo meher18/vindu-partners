@@ -7,26 +7,79 @@ export default function LoginScreen() {
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
 
-  async function signInWithEmail() {
-    setLoading(true);
-    const { error } = await supabase.auth.signInWithPassword({ email, password });
-    if (error) Alert.alert('Login Failed', error.message);
-    setLoading(false);
-  }
-
   const [requestedRole, setRequestedRole] = useState<'vendor' | 'driver'>('vendor');
 
-  async function signUpWithEmail() {
+  const validateEmail = (email: string) => {
+    const regex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    return regex.test(email);
+  };
+
+  const validatePassword = (password: string) => {
+    return password.length >= 8;
+  };
+
+  async function signInWithEmail() {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) {
+      Alert.alert('Missing Email', 'Please enter your email address');
+      return;
+    }
+    if (!validateEmail(normalizedEmail)) {
+      Alert.alert('Invalid Email', 'Please enter a valid email address');
+      return;
+    }
+    if (!password) {
+      Alert.alert('Missing Password', 'Please enter your password');
+      return;
+    }
+
     setLoading(true);
-    // Explicitly pass the selected role during signup so the database trigger parses it correctly
-    const { data: { session }, error } = await supabase.auth.signUp({ 
-      email, 
-      password,
-      options: { data: { requested_role: requestedRole } }
-    });
-    if (error) Alert.alert('Signup Failed', error.message);
-    else if (!session) Alert.alert('Check Inbox', 'Please check your inbox for email verification!');
-    setLoading(false);
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email: normalizedEmail, password });
+      if (error) {
+        Alert.alert('Login Failed', error.message || 'Unable to sign in. Please try again.');
+      }
+    } catch {
+      Alert.alert('Login Failed', 'Unable to reach the service. Please check your connection and try again.');
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function signUpWithEmail() {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!normalizedEmail) {
+      Alert.alert('Missing Email', 'Please enter an email address');
+      return;
+    }
+    if (!validateEmail(normalizedEmail)) {
+      Alert.alert('Invalid Email', 'Please enter a valid email address');
+      return;
+    }
+    if (!password) {
+      Alert.alert('Missing Password', 'Please enter a password');
+      return;
+    }
+    if (!validatePassword(password)) {
+      Alert.alert('Weak Password', 'Password must be at least 8 characters long');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      // Explicitly pass the selected role during signup so the database trigger parses it correctly
+      const { data: { session }, error } = await supabase.auth.signUp({ 
+        email: normalizedEmail, 
+        password,
+        options: { data: { requested_role: requestedRole } }
+      });
+      if (error) Alert.alert('Signup Failed', error.message || 'Unable to create account');
+      else if (!session) Alert.alert('Check Inbox', 'Please check your inbox for email verification!');
+    } catch {
+      Alert.alert('Signup Failed', 'Unable to reach the service. Please check your connection and try again.');
+    } finally {
+      setLoading(false);
+    }
   }
 
   return (

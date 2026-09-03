@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView, Alert, SafeAreaView, ActivityIndicator, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView, Alert, SafeAreaView, ActivityIndicator, RefreshControl, TextInput } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
@@ -137,11 +137,14 @@ export default function VendorPlans() {
       if (price < 50 || price > 500) throw new Error('Price must be between ₹50 and ₹500 per day');
       
       // Check for duplicate ACTIVE plan (loophole fix)
-      const existing = plans?.find(p => 
-        p.diet_type === dietType && 
-        p.slot_name === slotName && 
-        p.status === 'active'
-      );
+      const newOpDays = opDays === '7-day' ? 'mon,tue,wed,thu,fri,sat,sun' : 'mon,tue,wed,thu,fri';
+      const existing = plans?.find(p => {
+        const pOpDays = (p.operating_days || ['mon','tue','wed','thu','fri','sat','sun']).join(',');
+        return p.diet_type === dietType && 
+               p.slot_name === slotName && 
+               p.status === 'active' &&
+               pOpDays === newOpDays;
+      });
       if (existing) {
         throw new Error('DUPLICATE_PLAN');
       }
@@ -390,6 +393,18 @@ export default function VendorPlans() {
                 <Text style={[styles.chipText, price === p && styles.chipTextActive]}>₹{p}</Text>
               </TouchableOpacity>
             ))}
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12, gap: 10 }}>
+            <Text style={{ fontSize: 13, color: '#667085', fontWeight: '600' }}>Or enter custom:</Text>
+            <TextInput
+              style={{ flex: 1, backgroundColor: '#F9FAFB', borderWidth: 1.5, borderColor: price > 0 && !PRICE_OPTIONS.includes(price) ? '#FF6B6B' : '#EAECF0', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, fontSize: 16, fontWeight: '700', color: '#101828' }}
+              keyboardType="number-pad"
+              placeholder="₹ Custom"
+              placeholderTextColor="#98A2B3"
+              value={!PRICE_OPTIONS.includes(price) ? String(price) : ''}
+              onChangeText={(t) => { const n = parseInt(t, 10); if (!isNaN(n) && n > 0) setPrice(n); else if (t === '') setPrice(0); }}
+              returnKeyType="done"
+            />
           </View>
           <View style={{ backgroundColor: '#ECFDF5', padding: 16, borderRadius: 12, marginTop: 12, marginBottom: 24, borderWidth: 1, borderColor: '#D1FAE5' }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>

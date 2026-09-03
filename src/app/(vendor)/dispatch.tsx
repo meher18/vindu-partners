@@ -1,55 +1,52 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity, ActivityIndicator, Alert, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity, ActivityIndicator, Alert, RefreshControl, Modal } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
 import * as Haptics from 'expo-haptics';
 
+const getLocalISODate = (date: Date) => {
+  const offset = date.getTimezoneOffset() * 60000;
+  return new Date(date.getTime() - offset).toISOString().split('T')[0];
+};
+
 export default function DispatchScreen() {
   const { user } = useAuthStore();
   const queryClient = useQueryClient();
 
-  const { data: kitchen } = useQuery({
+  const { data: kitchen, isError: kitchenError } = useQuery({
     queryKey: ['vendor-kitchen', user?.id],
     queryFn: async () => {
-      const { data } = await supabase.from('kitchens').select('id').eq('vendor_id', user?.id).single();
+      const { data, error } = await supabase.from('kitchens').select('id').eq('vendor_id', user?.id).maybeSingle();
+      if (error) throw error;
       return data;
     },
     enabled: !!user?.id,
-  
-  packingListBtn: { marginTop: 12, paddingVertical: 14, backgroundColor: '#F3F4F6', borderRadius: 12, alignItems: 'center' },
-  packingListBtnText: { color: '#374151', fontSize: 14, fontWeight: '700' },
-  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', padding: 24, borderBottomWidth: 1, borderBottomColor: '#F3F4F6', backgroundColor: '#FFF' },
-  modalTitle: { fontSize: 24, fontWeight: '800', color: '#1A1A2E' },
-  modalSub: { fontSize: 14, color: '#6B7280', marginTop: 4 },
-  closeBtn: { fontSize: 16, fontWeight: '600', color: '#FF6B6B' },
-  manifestRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
-  manifestLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
-  dietBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 },
-  dietBadgeText: { fontSize: 12, fontWeight: '800' },
-  manifestQty: { fontSize: 16, fontWeight: '700', color: '#1A1A2E' },
-  manifestStatusWrap: { backgroundColor: '#F9FAFB', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: '#E5E7EB' },
-  manifestStatusLabel: { fontSize: 10, fontWeight: '700', color: '#6B7280' }
-});
+  });
 
-  const { data: dispatchBatches, isLoading, refetch, isRefetching } = useQuery({
+  const [activeBatch, setActiveBatch] = useState<any>(null);
+
+  const { data: dispatchBatches, isLoading, isError: dispatchError, refetch, isRefetching } = useQuery({
     queryKey: ['vendor-dispatch', kitchen?.id],
     queryFn: async () => {
       // 1. Get all active subscriptions for this kitchen
-      const { data: subs } = await supabase.from('subscriptions').select('id, slot_name, diet_type').eq('kitchen_id', kitchen?.id);
+      const { data: subs, error: subsError } = await supabase.from('subscriptions').select('id, slot_name, diet_type').eq('kitchen_id', kitchen?.id);
+      if (subsError) throw subsError;
       if (!subs || subs.length === 0) return [];
 
       // 2. Get all active customer subscriptions attached to these plans
-      const { data: cSubs } = await supabase.from('customer_subscriptions').select('id, subscription_id, quantity').in('subscription_id', subs.map(s => s.id)).eq('status', 'active');
+      const { data: cSubs, error: cSubsError } = await supabase.from('customer_subscriptions').select('id, subscription_id, quantity, customer_id').in('subscription_id', subs.map(s => s.id)).eq('status', 'active');
+      if (cSubsError) throw cSubsError;
       if (!cSubs || cSubs.length === 0) return [];
 
       // 3. Get today's deliveries for these customer subscriptions
-      const today = new Date().toISOString().split('T')[0]; // Adjust for timezone in prod
-      const { data: deliveries } = await supabase.from('deliveries').select('id, customer_subscription_id, status, vendor_ready_at').in('customer_subscription_id', cSubs.map(cs => cs.id)).eq('date', today);
+      const today = getLocalISODate(new Date());
+      const { data: deliveries, error: deliveriesError } = await supabase.from('deliveries').select('id, customer_subscription_id, status, vendor_ready_at').in('customer_subscription_id', cSubs.map(cs => cs.id)).eq('date', today);
+      if (deliveriesError) throw deliveriesError;
       if (!deliveries) return [];
 
       // Group by slot
-      const batches: Record<string, { slot: string, totalQty: number, readyCount: number, pickedUpCount: number, deliveryIds: string[], dietBreakdown: Record<string, number> }> = {};
+      const batches: Record<string, { slot: string, totalQty: number, readyCount: number, pickedUpCount: number, deliveryIds: string[], dietBreakdown: Record<string, number>, rawDeliveries: any[] }> = {};
 
       deliveries.forEach(del => {
         const cSub = cSubs.find(cs => cs.id === del.customer_subscription_id);
@@ -85,15 +82,34 @@ export default function DispatchScreen() {
 
   const markBatchReady = useMutation({
     mutationFn: async (deliveryIds: string[]) => {
-      const { error } = await supabase.from('deliveries').update({ vendor_ready_at: new Date().toISOString(), status: 'vendor_ready' }).in('id', deliveryIds).is('vendor_ready_at', null);
+      if (!deliveryIds || deliveryIds.length === 0) throw new Error('No deliveries to mark ready');
+      if (!kitchen?.id) throw new Error('Kitchen not found. Please refresh.');
+      
+      const { data: updatedDeliveries, error } = await supabase
+        .from('deliveries')
+        .update({ 
+          vendor_ready_at: new Date().toISOString(), 
+          status: 'vendor_ready' 
+        })
+        .in('id', deliveryIds)
+        .is('vendor_ready_at', null)
+        .select('id');
+      
       if (error) throw error;
+      if (!updatedDeliveries || updatedDeliveries.length === 0) {
+        throw new Error('These deliveries were already marked ready. Refresh the dispatch list.');
+      }
+      return updatedDeliveries.length;
     },
-    onSuccess: () => {
+    onSuccess: (updatedCount) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       queryClient.invalidateQueries({ queryKey: ['vendor-dispatch', kitchen?.id] });
-      Alert.alert('Batch Ready', 'The driver will be notified to pick up the orders.');
+      Alert.alert('Batch Ready!', `${updatedCount} delivery record${updatedCount === 1 ? '' : 's'} staged for driver pickup.`);
     },
-    onError: (err: any) => Alert.alert('Error', err.message)
+    onError: (err: any) => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert('Error Marking Ready', err.message || 'Failed to mark batch ready. Please try again.');
+    }
   });
 
   return (
@@ -104,9 +120,33 @@ export default function DispatchScreen() {
       </View>
       
       <ScrollView contentContainerStyle={styles.scroll} refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor="#FF6B6B" />}>
-        {isLoading ? <ActivityIndicator size="large" color="#FF6B6B" style={{ marginTop: 40 }} /> : null}
+        {isLoading && (
+          <View style={{ alignItems: 'center', marginTop: 40 }}>
+            <ActivityIndicator size="large" color="#FF6B6B" style={{ marginBottom: 16 }} />
+            <Text style={{ color: '#667085', fontSize: 15, fontWeight: '600' }}>Loading today&apos;s deliveries...</Text>
+          </View>
+        )}
 
-        {!isLoading && dispatchBatches?.length === 0 && (
+        {!isLoading && (kitchenError || dispatchError) && (
+          <View style={styles.emptyWrap}>
+            <Text style={styles.emptyEmoji}>⚠️</Text>
+            <Text style={styles.emptyTitle}>Could Not Load Dispatch</Text>
+            <Text style={styles.emptySub}>Check your connection and try again.</Text>
+            <TouchableOpacity style={[styles.dispatchBtn, { marginTop: 20, paddingHorizontal: 24 }]} onPress={() => refetch()}>
+              <Text style={styles.dispatchBtnText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {!isLoading && !kitchenError && !dispatchError && !kitchen && (
+          <View style={styles.emptyWrap}>
+            <Text style={styles.emptyEmoji}>⚠️</Text>
+            <Text style={styles.emptyTitle}>Kitchen Not Found</Text>
+            <Text style={styles.emptySub}>Please set up your kitchen profile first in the Dashboard.</Text>
+          </View>
+        )}
+
+        {!isLoading && !kitchenError && !dispatchError && dispatchBatches?.length === 0 && (
           <View style={styles.emptyWrap}>
             <Text style={styles.emptyEmoji}>🛵</Text>
             <Text style={styles.emptyTitle}>No Deliveries Today</Text>
@@ -229,5 +269,18 @@ const styles = StyleSheet.create({
   emptyEmoji: { fontSize: 48, marginBottom: 16 },
   emptyTitle: { fontSize: 20, fontWeight: '700', color: '#1A1A2E', marginBottom: 8 },
   emptySub: { fontSize: 15, color: '#6B7280', textAlign: 'center', paddingHorizontal: 20 },
+  packingListBtn: { marginTop: 12, paddingVertical: 14, backgroundColor: '#F3F4F6', borderRadius: 12, alignItems: 'center' },
+  packingListBtnText: { color: '#374151', fontSize: 14, fontWeight: '700' },
+  modalHeader: { flexDirection: 'row', justifyContent: 'space-between', padding: 24, borderBottomWidth: 1, borderBottomColor: '#F3F4F6', backgroundColor: '#FFF' },
+  modalTitle: { fontSize: 24, fontWeight: '800', color: '#1A1A2E' },
+  modalSub: { fontSize: 14, color: '#6B7280', marginTop: 4 },
+  closeBtn: { fontSize: 16, fontWeight: '600', color: '#FF6B6B' },
+  manifestRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 16, borderBottomWidth: 1, borderBottomColor: '#F3F4F6' },
+  manifestLeft: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  dietBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6 },
+  dietBadgeText: { fontSize: 12, fontWeight: '800' },
+  manifestQty: { fontSize: 16, fontWeight: '700', color: '#1A1A2E' },
+  manifestStatusWrap: { backgroundColor: '#F9FAFB', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 6, borderWidth: 1, borderColor: '#E5E7EB' },
+  manifestStatusLabel: { fontSize: 10, fontWeight: '700', color: '#6B7280' }
 });
 

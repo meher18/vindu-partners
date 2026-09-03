@@ -49,7 +49,7 @@ export default function VendorDashboard() {
     queryFn: async () => {
       // CRITICAL: We MUST fetch cancelled plans here too, because the vendor MUST STILL COOK 
       // for existing customers until their subscriptions naturally expire.
-      const { data } = await supabase.from('subscriptions').select('id, diet_type, slot_name, operating_days, slot_target_time, status').eq('kitchen_id', kitchen?.id);
+      const { data } = await supabase.from('subscriptions').select('id, diet_type, slot_name, operating_days, slot_target_time, status, capacity, vendor_fee').eq('kitchen_id', kitchen?.id);
       return data || [];
     },
     enabled: !!kitchen?.id,
@@ -178,34 +178,114 @@ export default function VendorDashboard() {
 
   const createKitchen = useMutation({
     mutationFn: async () => {
-      if (!name || !address || !fssai || !radius || !phone) throw new Error("Please fill all fields");
+      // Comprehensive validation
+      if (!name.trim()) throw new Error("Kitchen name is required");
+      if (!address.trim()) throw new Error("Address is required");
+      if (!phone.trim()) throw new Error("Dispatch phone is required");
+      if (!fssai.trim()) throw new Error("FSSAI license is required");
+      if (!radius.trim()) throw new Error("Delivery radius is required");
+
+      // Phone validation
+      const phoneClean = phone.replace(/\D/g, '');
+      if (phoneClean.length !== 10) throw new Error("Phone must be exactly 10 digits");
+
+      // Radius validation
       const radiusInt = parseInt(radius);
       if (isNaN(radiusInt) || radiusInt <= 0) throw new Error("Delivery radius must be a positive number");
-      if (phone.length < 10) throw new Error("Please enter a valid 10-digit phone number");
+      if (radiusInt > 50) throw new Error("Delivery radius cannot exceed 50 km");
+
+      // FSSAI validation (14 digits)
+      const fssaiClean = fssai.replace(/\D/g, '');
+      if (fssaiClean.length !== 14) throw new Error("FSSAI license must be exactly 14 digits");
+
+      // Address length check
+      if (address.length < 10) throw new Error("Address must be at least 10 characters");
       
       // Update the vendor's profile with their dispatch contact number
-      const { error: pErr } = await supabase.from('profiles').update({ phone }).eq('id', user?.id);
+      const { error: pErr } = await supabase.from('profiles').update({ phone: phoneClean }).eq('id', user?.id);
       if (pErr) throw pErr;
 
       const { data, error } = await supabase.from('kitchens').insert([{ 
-        vendor_id: user?.id, name, address, fssai_number: fssai, delivery_radius_km: radiusInt 
+        vendor_id: user?.id, 
+        name: name.trim(), 
+        address: address.trim(), 
+        fssai_number: fssaiClean,
+        delivery_radius_km: radiusInt,
+        status: 'pending'  // All new kitchens start as pending
       }]).select().single();
+      
       if (error) throw error;
       return data;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['vendor-kitchen', user?.id] }),
+    onSuccess: () => {
+      import('expo-haptics').then(Haptics => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success));
+      queryClient.invalidateQueries({ queryKey: ['vendor-kitchen', user?.id] });
+      Alert.alert('Kitchen Created!', 'Your kitchen profile is now pending admin review. You can start adding meal plans while we verify your details.');
+    },
+    onError: (err: any) => {
+      import('expo-haptics').then(Haptics => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error));
+      Alert.alert('Error Creating Kitchen', err.message);
+    }
+  });
+
+  const [editProfileModal, setEditProfileModal] = useState(false);
+  const updateKitchen = useMutation({
+    mutationFn: async () => {
+      if (!name.trim()) throw new Error("Kitchen name is required");
+      if (!address.trim()) throw new Error("Address is required");
+      if (!phone.trim()) throw new Error("Dispatch phone is required");
+      if (!fssai.trim()) throw new Error("FSSAI license is required");
+      if (!radius.trim()) throw new Error("Delivery radius is required");
+
+      const phoneClean = phone.replace(/\D/g, '');
+      if (phoneClean.length !== 10) throw new Error("Phone must be exactly 10 digits");
+      const radiusInt = parseInt(radius);
+      if (isNaN(radiusInt) || radiusInt <= 0) throw new Error("Delivery radius must be a positive number");
+      const fssaiClean = fssai.replace(/\D/g, '');
+      if (fssaiClean.length !== 14) throw new Error("FSSAI license must be exactly 14 digits");
+
+      await supabase.from('profiles').update({ phone: phoneClean }).eq('id', user?.id);
+      
+      const { error } = await supabase.from('kitchens').update({ 
+        name: name.trim(), 
+        address: address.trim(), 
+        fssai_number: fssaiClean,
+        delivery_radius_km: radiusInt
+      }).eq('id', kitchen?.id);
+      
+      if (error) throw error;
+    },
+    onSuccess: () => {
+      import('expo-haptics').then(Haptics => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success));
+      queryClient.invalidateQueries({ queryKey: ['vendor-kitchen', user?.id] });
+      setEditProfileModal(false);
+      Alert.alert('Success', 'Profile updated');
+    },
     onError: (err: any) => Alert.alert('Error', err.message)
   });
 
   const addHoliday = useMutation({
     mutationFn: async () => {
       const dateRegex = /^\d{4}-\d{2}-\d{2}$/;
-      if (!dateRegex.test(holidayDate)) throw new Error("Date must be in YYYY-MM-DD format.");
-      const todayStr = getLocalToday();
-      if (holidayDate < todayStr) throw new Error("You cannot add a holiday in the past.");
+      if (!dateRegex.test(holidayDate)) throw new Error("Date must be in YYYY-MM-DD format (e.g., 2026-10-31)");
       
+      // Validate date is actually valid
+      const [year, month, day] = holidayDate.split('-').map(Number);
+      const parsedDate = new Date(year, month - 1, day);
+      if (isNaN(parsedDate.getTime())) throw new Error("Invalid date entered");
+      
+      const todayStr = getLocalToday();
+      if (holidayDate < todayStr) throw new Error("Cannot mark a date in the past as a holiday");
+      if (holidayDate === todayStr) throw new Error("Cannot mark today as a holiday. Only future dates are allowed.");
+      
+      // Check if already marked as holiday
+      if (holidays?.some(h => h.holiday_date === holidayDate)) {
+        throw new Error('This date is already marked as a holiday');
+      }
+      
+      // If marking for very soon, warn about prep times
       if (holidayDate === todayStr) {
-        if (!plans || plans.length === 0) throw new Error("Cannot verify prep times. Please add a plan first.");
+        if (!plans || plans.length === 0) throw new Error("Cannot verify prep times. Please add a meal plan first.");
         
         let earliestCutoff: Date | null = null;
         for (const plan of plans) {
@@ -223,21 +303,44 @@ export default function VendorDashboard() {
           throw new Error("Prep window has already started for today's earliest meal. You can only declare holidays for tomorrow onwards.");
         }
       }
-      const { error } = await supabase.from('kitchen_holidays').insert([{ kitchen_id: kitchen?.id, holiday_date: holidayDate, reason: holidayReason }]);
+      
+      const reason = holidayReason.trim() || 'Kitchen Closed';
+      const { error } = await supabase.from('kitchen_holidays').insert([{ 
+        kitchen_id: kitchen?.id, 
+        holiday_date: holidayDate, 
+        reason 
+      }]);
       if (error) throw error;
     },
     onSuccess: () => {
+      import('expo-haptics').then(Haptics => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success));
       setHolidayModal(false);
+      setHolidayDate(getLocalToday());
+      setHolidayReason('Kitchen Closed');
       queryClient.invalidateQueries({ queryKey: ['vendor-holidays', kitchen?.id] });
+      Alert.alert('Holiday Marked', 'Your kitchen will not accept orders for this date. All customers will be notified.');
     },
-    onError: (err: any) => Alert.alert('Error', err.message)
+    onError: (err: any) => {
+      import('expo-haptics').then(Haptics => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error));
+      Alert.alert('Error', err.message);
+    }
   });
 
   const deleteHoliday = useMutation({
     mutationFn: async (id: string) => {
-      await supabase.from('kitchen_holidays').delete().eq('id', id);
+      if (!id) throw new Error('Holiday record not found');
+      const { error } = await supabase.from('kitchen_holidays').delete().eq('id', id);
+      if (error) throw error;
     },
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['vendor-holidays', kitchen?.id] })
+    onSuccess: () => {
+      import('expo-haptics').then(Haptics => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success));
+      queryClient.invalidateQueries({ queryKey: ['vendor-holidays', kitchen?.id] });
+      Alert.alert('Holiday Removed', 'The kitchen will accept orders for this date again.');
+    },
+    onError: (err: any) => {
+      import('expo-haptics').then(Haptics => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error));
+      Alert.alert('Unable to Remove Holiday', err.message || 'Please try again.');
+    },
   });
 
   // Check for missing menus for today and tomorrow
@@ -255,7 +358,7 @@ export default function VendorDashboard() {
       let missingInDay = false;
       plans.forEach(plan => {
         const planKey = `${plan.diet_type.toUpperCase()} ${plan.slot_name.toUpperCase()}`;
-        const customers = prepForecast[dayKey].breakdown[planKey] || 0;
+        const customers = (prepForecast[dayKey].breakdown as any)[planKey] || 0;
         if (customers === 0) return;
         
         const hasMenu = menus.some(m => m.subscription_id === plan.id && m.effective_date === dateStr);
@@ -294,7 +397,7 @@ export default function VendorDashboard() {
           <ScrollView contentContainerStyle={styles.container}>
           <View style={styles.header}>
             <Text style={styles.title}>Welcome to Vindu</Text>
-            <Text style={styles.subtitle}>Let's set up your kitchen profile to get started.</Text>
+            <Text style={styles.subtitle}>Let&apos;s set up your kitchen profile to get started.</Text>
           </View>
           
           <View style={styles.formCard}>
@@ -355,7 +458,7 @@ export default function VendorDashboard() {
           const isHolidayToday = holidays?.some(h => h.holiday_date === todayStr);
           if (isHolidayToday) return null;
           
-          let nearestPlan = null;
+          let nearestPlan: any = null;
           let minDiffMs = Infinity;
           
           plans.forEach(plan => {
@@ -401,7 +504,18 @@ export default function VendorDashboard() {
         <View style={styles.dashboardHeader}>
           <View style={{ flex: 1 }}>
             <Text style={styles.dashboardGreeting}>Hello,</Text>
-            <Text style={styles.dashboardTitle}>{kitchen.name}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <Text style={styles.dashboardTitle}>{kitchen.name}</Text>
+              <TouchableOpacity onPress={() => {
+                setName(kitchen.name);
+                setAddress(kitchen.address);
+                setFssai(kitchen.fssai_number);
+                setRadius(String(kitchen.delivery_radius_km || '5'));
+                setEditProfileModal(true);
+              }} style={{ marginLeft: 8, padding: 4 }}>
+                <Text style={{ fontSize: 16 }}>✏️</Text>
+              </TouchableOpacity>
+            </View>
             <View style={[styles.statusBadge, kitchen.status === 'active' ? styles.statusActive : styles.statusPending]}>
               <Text style={[styles.statusText, kitchen.status === 'active' ? styles.statusTextActive : styles.statusTextPending]}>
                 {(kitchen.status ?? 'pending').toUpperCase()}
@@ -454,32 +568,33 @@ export default function VendorDashboard() {
           </View>
         )}
 
+        <Text style={styles.infoTitle}>📊 Today&apos;s Prep</Text>
         <View style={styles.statsGrid}>
-          <View style={[styles.statCard, { paddingBottom: 12 }]}>
-            <Text style={styles.statLabel}>Today's Prep</Text>
-            <Text style={styles.statValue}>{prepForecast?.today.total || 0}</Text>
-            <Text style={styles.statSub}>Meals to cook today</Text>
+          <View style={styles.statCard}>
+            <Text style={styles.statLabel}>Total Meals</Text>
+            {isForecastLoading ? <ActivityIndicator size="small" color="#FF6B6B" /> : <Text style={styles.statValue}>{prepForecast?.today.total || 0}</Text>}
+            <Text style={styles.statSub}>To be cooked</Text>
             {prepForecast?.today.breakdown && Object.keys(prepForecast.today.breakdown).length > 0 && (
-              <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#F3F4F6', gap: 6 }}>
+              <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: '#F2F4F7', paddingTop: 12 }}>
                 {Object.entries(prepForecast.today.breakdown).map(([key, qty]) => (
-                  <View key={key} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                    <Text style={{ fontSize: 13, color: '#374151', fontWeight: '600' }}>{key}</Text>
-                    <Text style={{ fontSize: 13, color: '#FF6B6B', fontWeight: '800' }}>{qty}</Text>
+                  <View key={key} style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <Text style={{ fontSize: 12, color: '#667085' }}>{key}</Text>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#344054' }}>{qty as number}</Text>
                   </View>
                 ))}
               </View>
             )}
           </View>
-          <View style={[styles.statCard, { paddingBottom: 12 }]}>
-            <Text style={styles.statLabel}>Tomorrow's Groceries</Text>
-            <Text style={styles.statValue}>{prepForecast?.tomorrow.total || 0}</Text>
-            <Text style={styles.statSub}>Forecasted inventory</Text>
+          <View style={styles.statCard}>
+            <Text style={styles.statLabel}>Tomorrow</Text>
+            {isForecastLoading ? <ActivityIndicator size="small" color="#FF6B6B" /> : <Text style={styles.statValue}>{prepForecast?.tomorrow.total || 0}</Text>}
+            <Text style={styles.statSub}>Projected meals</Text>
             {prepForecast?.tomorrow.breakdown && Object.keys(prepForecast.tomorrow.breakdown).length > 0 && (
-              <View style={{ marginTop: 12, paddingTop: 12, borderTopWidth: 1, borderTopColor: '#F3F4F6', gap: 6 }}>
+              <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: '#F2F4F7', paddingTop: 12 }}>
                 {Object.entries(prepForecast.tomorrow.breakdown).map(([key, qty]) => (
-                  <View key={key} style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-                    <Text style={{ fontSize: 13, color: '#374151', fontWeight: '600' }}>{key}</Text>
-                    <Text style={{ fontSize: 13, color: '#FF6B6B', fontWeight: '800' }}>{qty}</Text>
+                  <View key={key} style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                    <Text style={{ fontSize: 12, color: '#667085' }}>{key}</Text>
+                    <Text style={{ fontSize: 12, fontWeight: '700', color: '#344054' }}>{qty as number}</Text>
                   </View>
                 ))}
               </View>
@@ -504,7 +619,7 @@ export default function VendorDashboard() {
                     <Text style={{fontSize: 12, fontWeight: '700', color: '#374151'}}>{r.profiles?.full_name || 'Customer'}</Text>
                     <Text style={{fontSize: 12, color: '#9CA3AF'}}>{new Date(r.created_at).toLocaleDateString()}</Text>
                   </View>
-                  <Text style={{fontSize: 13, color: '#4B5563', fontStyle: 'italic'}}>"{r.review_text}"</Text>
+                  <Text style={{fontSize: 13, color: '#4B5563', fontStyle: 'italic'}}>&quot;{r.review_text}&quot;</Text>
                 </View>
               ))}
             </View>
@@ -555,6 +670,46 @@ export default function VendorDashboard() {
           </View>
         </KeyboardAvoidingView>
       </Modal>
+      
+      {/* Edit Profile Modal */}
+      <Modal visible={editProfileModal} animationType="slide" presentationStyle="pageSheet">
+        <SafeAreaView style={styles.safeArea}>
+          <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ flex: 1 }}>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', padding: 20, borderBottomWidth: 1, borderBottomColor: '#EAECF0', backgroundColor: '#FFF' }}>
+              <Text style={{ fontSize: 20, fontWeight: '700', color: '#101828' }}>Edit Kitchen Profile</Text>
+              <TouchableOpacity onPress={() => setEditProfileModal(false)}>
+                <Text style={{ fontSize: 16, color: '#667085', fontWeight: '600' }}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+            <ScrollView contentContainerStyle={{ padding: 24, paddingBottom: 100, backgroundColor: '#FFF' }}>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Kitchen Name</Text>
+                <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Your Brand Name" placeholderTextColor="#98A2B3" />
+              </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Dispatch Phone Number</Text>
+                <TextInput style={styles.input} value={phone} onChangeText={setPhone} placeholder="10-digit mobile number" placeholderTextColor="#98A2B3" keyboardType="phone-pad" maxLength={15} />
+              </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>FSSAI License Number</Text>
+                <TextInput style={styles.input} value={fssai} onChangeText={setFssai} placeholder="14-digit license number" placeholderTextColor="#98A2B3" keyboardType="number-pad" maxLength={14} />
+              </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Delivery Radius (km)</Text>
+                <TextInput style={styles.input} value={radius} onChangeText={setRadius} placeholder="e.g. 5" placeholderTextColor="#98A2B3" keyboardType="number-pad" maxLength={2} />
+              </View>
+              <View style={styles.inputGroup}>
+                <Text style={styles.label}>Pickup Address</Text>
+                <TextInput style={[styles.input, { height: 100, textAlignVertical: 'top' }]} value={address} onChangeText={setAddress} placeholder="Full address for drivers" placeholderTextColor="#98A2B3" multiline />
+              </View>
+              <TouchableOpacity style={styles.submitBtn} onPress={() => updateKitchen.mutate()} disabled={updateKitchen.isPending}>
+                {updateKitchen.isPending ? <ActivityIndicator color="#FFF" /> : <Text style={styles.submitBtnText}>Save Changes</Text>}
+              </TouchableOpacity>
+            </ScrollView>
+          </KeyboardAvoidingView>
+        </SafeAreaView>
+      </Modal>
+
     </SafeAreaView>
   );
 }

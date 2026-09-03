@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, SafeAreaView, ActivityIndicator, TouchableOpacity, Modal, TextInput, Alert, RefreshControl } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, SafeAreaView, ActivityIndicator, TouchableOpacity, Modal, TextInput, Alert, RefreshControl, KeyboardAvoidingView, Platform } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
@@ -17,32 +17,29 @@ export default function VendorLedger() {
     setRefreshing(false);
   }, [queryClient]);
 
-  const { data: kitchen } = useQuery({
+  const { data: kitchen, isError: kitchenError } = useQuery({
     queryKey: ['vendor-kitchen', user?.id],
     queryFn: async () => {
-      const { data } = await supabase.from('kitchens').select('id, upi_id').eq('vendor_id', user?.id).single();
+      const { data, error } = await supabase.from('kitchens').select('id, upi_id').eq('vendor_id', user?.id).maybeSingle();
+      if (error) throw error;
       return data;
     },
     enabled: !!user?.id,
   });
 
-  React.useEffect(() => {
-    if (kitchen?.upi_id && !upiInput) {
-      setUpiInput(kitchen.upi_id);
-    }
-  }, [kitchen?.upi_id]);
-
   const { data: mrr } = useQuery({
     queryKey: ['vendor-mrr', kitchen?.id],
     queryFn: async () => {
-      const { data: subs } = await supabase.from('subscriptions').select('id, vendor_fee').eq('kitchen_id', kitchen?.id);
+      const { data: subs, error: subsError } = await supabase.from('subscriptions').select('id, vendor_fee').eq('kitchen_id', kitchen?.id);
+      if (subsError) throw subsError;
       if (!subs || subs.length === 0) return 0;
       
-      const { data: cSubs } = await supabase
+      const { data: cSubs, error: cSubsError } = await supabase
         .from('customer_subscriptions')
         .select('subscription_id, quantity')
         .eq('status', 'active')
         .in('subscription_id', subs.map(s => s.id));
+      if (cSubsError) throw cSubsError;
         
       if (!cSubs) return 0;
       
@@ -52,12 +49,12 @@ export default function VendorLedger() {
         totalDaily += (cs.quantity || 1) * (sub?.vendor_fee || 0);
       });
       
-      return totalDaily * 30;
+      return totalDaily * 26; // Approx 26 operating days per month
     },
     enabled: !!kitchen?.id,
   });
 
-  const { data: ledger, isLoading } = useQuery({
+  const { data: ledger, isLoading, isError: ledgerError, refetch: refetchLedger } = useQuery({
     queryKey: ['vendor-ledger', kitchen?.id],
     queryFn: async () => {
       const { data, error } = await supabase.from('vendor_ledger').select('*').eq('kitchen_id', kitchen?.id).order('created_at', { ascending: false });
@@ -69,16 +66,28 @@ export default function VendorLedger() {
 
   const updateUpi = useMutation({
     mutationFn: async () => {
-      const upiRegex = /^[a-zA-Z0-9.\-_]{2,256}@[a-zA-Z]{2,64}$/;
-      if (!upiRegex.test(upiInput)) throw new Error("Please enter a valid UPI ID (e.g. name@bank).");
-      const { error } = await supabase.from('kitchens').update({ upi_id: upiInput }).eq('id', kitchen?.id);
+      if (!upiInput.trim()) throw new Error("UPI ID cannot be empty");
+      
+      const upiLower = upiInput.trim().toLowerCase();
+      // Comprehensive UPI validation
+      const upiRegex = /^[a-z0-9._-]+@[a-z]{2,}$/i;
+      if (!upiRegex.test(upiLower)) {
+        throw new Error("Invalid UPI format. Please use format: username@bankname (e.g., myname@okhdfcbank)");
+      }
+      
+      const { error } = await supabase.from('kitchens').update({ upi_id: upiLower }).eq('id', kitchen?.id);
       if (error) throw error;
     },
     onSuccess: () => {
+      import('expo-haptics').then(Haptics => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success));
       setUpiModal(false);
       queryClient.invalidateQueries({ queryKey: ['vendor-kitchen', user?.id] });
+      Alert.alert('Success', 'UPI ID updated! Your payouts will be sent to this account.');
     },
-    onError: (err: any) => Alert.alert('Invalid', err.message)
+    onError: (err: any) => {
+      import('expo-haptics').then(Haptics => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error));
+      Alert.alert('Error Updating UPI', err.message);
+    }
   });
 
   const pendingBalance = ledger?.filter(l => l.status === 'pending').reduce((sum, l) => sum + Number(l.net_amount || 0), 0) || 0;
@@ -115,7 +124,7 @@ export default function VendorLedger() {
         </View>
 
         {/* Payout Settings */}
-        <TouchableOpacity style={styles.payoutCard} onPress={() => setUpiModal(true)}>
+        <TouchableOpacity style={styles.payoutCard} onPress={() => { setUpiInput(kitchen?.upi_id || ''); setUpiModal(true); }}>
           <Text style={styles.payoutTitle}>Payout Settings</Text>
           <View style={styles.payoutRow}>
             <Text style={styles.payoutLabel}>UPI ID:</Text>
@@ -129,7 +138,26 @@ export default function VendorLedger() {
 
         {isLoading && <ActivityIndicator size="large" color="#FF6B6B" style={{ marginTop: 40 }} />}
 
-        {!isLoading && ledger?.length === 0 && (
+        {!isLoading && (kitchenError || ledgerError) && (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyIcon}>⚠️</Text>
+            <Text style={styles.emptyTitle}>Could Not Load Earnings</Text>
+            <Text style={styles.emptySub}>Check your connection and try again.</Text>
+            <TouchableOpacity style={styles.retryButton} onPress={() => refetchLedger()}>
+              <Text style={styles.retryButtonText}>Retry</Text>
+            </TouchableOpacity>
+          </View>
+        )}
+
+        {!isLoading && !kitchenError && !ledgerError && !kitchen && (
+          <View style={styles.emptyState}>
+            <Text style={styles.emptyIcon}>⚠️</Text>
+            <Text style={styles.emptyTitle}>Kitchen Not Found</Text>
+            <Text style={styles.emptySub}>Set up your kitchen profile before viewing payouts.</Text>
+          </View>
+        )}
+
+        {!isLoading && !kitchenError && !ledgerError && ledger?.length === 0 && (
           <View style={styles.emptyState}>
             <Text style={styles.emptyIcon}>💸</Text>
             <Text style={styles.emptyTitle}>No earnings yet</Text>
@@ -156,7 +184,7 @@ export default function VendorLedger() {
                 </View>
                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
                   <Text style={styles.txDate}>{date} · {tx.status.toUpperCase()}</Text>
-                  <Text style={{ fontSize: 11, color: '#9CA3AF', fontWeight: '600' }}>Gross: ₹{tx.gross_amount} · Fee: -₹{tx.platform_fee}</Text>
+                  <Text style={{ fontSize: 11, color: '#9CA3AF', fontWeight: '600' }}>Gross: ₹{tx.gross_amount} · Fee: -₹{tx.penalty_amount || 0}</Text>
                 </View>
               </View>
             </View>
@@ -233,4 +261,6 @@ const styles = StyleSheet.create({
   txDate: { fontSize: 12, color: '#667085', fontWeight: '500' },
   txAmount: { fontSize: 16, fontWeight: '800', color: '#027A48' },
   txNegative: { color: '#DC2626' },
+  retryButton: { backgroundColor: '#FF6B6B', paddingHorizontal: 24, paddingVertical: 12, borderRadius: 10, marginTop: 16 },
+  retryButtonText: { color: '#FFF', fontWeight: '700', fontSize: 14 },
 });

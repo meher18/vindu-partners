@@ -1,14 +1,15 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, ActivityIndicator, Modal, TextInput, Alert, Switch, RefreshControl, Vibration, LayoutAnimation, UIManager, Platform, KeyboardAvoidingView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, SafeAreaView, ActivityIndicator, Modal, TextInput, Alert, Switch, RefreshControl, LayoutAnimation, UIManager, Platform, KeyboardAvoidingView } from 'react-native';
 
-if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
-  UIManager.setLayoutAnimationEnabledExperimental(true);
-}
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
 import { useRouter } from 'expo-router';
 import * as Haptics from 'expo-haptics';
+
+if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental) {
+  UIManager.setLayoutAnimationEnabledExperimental(true);
+}
 
 // Helper to get local date string YYYY-MM-DD instead of UTC
 const getLocalISODate = (d: Date) => {
@@ -91,13 +92,6 @@ export default function VendorMenuPlanner() {
   const [calendarMonth, setCalendarMonth] = useState(new Date());
   const monthGrid = generateMonthGrid(calendarMonth);
 
-  useEffect(() => {
-    const d = parseLocalDate(selectedDate);
-    if (d.getMonth() !== calendarMonth.getMonth() || d.getFullYear() !== calendarMonth.getFullYear()) {
-      setCalendarMonth(new Date(d.getFullYear(), d.getMonth(), 1));
-    }
-  }, [selectedDate]);
-
   const [modalVisible, setModalVisible] = useState(false);
   const [monthModalVisible, setMonthModalVisible] = useState(false);
   const [editingPlanId, setEditingPlanId] = useState<string | null>(null);
@@ -136,7 +130,8 @@ export default function VendorMenuPlanner() {
     queryKey: ['vendor-plans', kitchen?.id],
     queryFn: async () => {
       // We must fetch ALL plans (even cancelled) so we can display their historical menus.
-      const { data } = await supabase.from('subscriptions').select('*').eq('kitchen_id', kitchen?.id);
+      const { data, error } = await supabase.from('subscriptions').select('*').eq('kitchen_id', kitchen?.id);
+      if (error) throw error;
       return data || [];
     },
     enabled: !!kitchen?.id,
@@ -144,11 +139,12 @@ export default function VendorMenuPlanner() {
   const { data: dishHistory } = useQuery({
     queryKey: ['vendor-dish-history', kitchen?.id],
     queryFn: async () => {
-      const { data } = await supabase.from('menus').select('menu_items').eq('kitchen_id', kitchen?.id);
+      const { data, error } = await supabase.from('menus').select('items').eq('kitchen_id', kitchen?.id);
+      if (error) throw error;
       if (!data) return [];
       const counts: Record<string, number> = {};
       data.forEach(m => {
-        (m.menu_items || []).forEach((d: string) => {
+        (m.items || []).forEach((d: string) => {
           const clean = d.trim();
           if (clean) counts[clean] = (counts[clean] || 0) + 1;
         });
@@ -176,12 +172,13 @@ export default function VendorMenuPlanner() {
       const maxDate = new Date(Math.max(stripEnd.getTime(), gridEnd.getTime()));
       maxDate.setDate(maxDate.getDate() + 7);
 
-      const { data } = await supabase
+      const { data, error } = await supabase
         .from('menus')
         .select('*')
         .in('subscription_id', plans.map(p => p.id))
         .gte('effective_date', getLocalISODate(minDate))
         .lte('effective_date', getLocalISODate(maxDate));
+      if (error) throw error;
       return data || [];
     },
     enabled: !!plans && plans.length > 0,
@@ -196,19 +193,52 @@ export default function VendorMenuPlanner() {
     enabled: !!kitchen?.id,
   });
 
-  useEffect(() => {
-    if (plans && Object.keys(selectedAutofillPlans).length === 0) {
-      const defaultSelection: Record<string, boolean> = {};
-      plans.forEach(p => defaultSelection[p.id] = true);
-      setSelectedAutofillPlans(defaultSelection);
-    }
-  }, [plans]);
-
   const submitMenu = useMutation({
     mutationFn: async () => {
-      const filteredItems = menuItems.map(item => item.trim()).filter(item => item !== '');
+      // Comprehensive validation
+      if (!kitchen?.id) throw new Error("Kitchen not found");
+      if (!editingPlanId) throw new Error("Plan not found");
+      if (!selectedDate) throw new Error("Date not selected");
+
+      const filteredItems = menuItems
+        .map(item => item.trim())
+        .filter(item => item !== '');
+      
       if (filteredItems.length === 0) throw new Error("Please add at least one menu item.");
       if (filteredItems.length > 10) throw new Error("Maximum 10 items allowed per menu.");
+      
+      // Validate each item
+      filteredItems.forEach((item, idx) => {
+        if (item.length < 2) throw new Error(`Item ${idx + 1} is too short (minimum 2 characters)`);
+        if (item.length > 100) throw new Error(`Item ${idx + 1} is too long (maximum 100 characters)`);
+      });
+
+      // Validate date, including calendar rollover cases such as February 31.
+      const todayStr = getLocalISODate(new Date());
+      const [year, month, day] = selectedDate.split('-').map(Number);
+      const parsedDate = new Date(year, month - 1, day);
+      if (
+        !/^\d{4}-\d{2}-\d{2}$/.test(selectedDate) ||
+        parsedDate.getFullYear() !== year ||
+        parsedDate.getMonth() !== month - 1 ||
+        parsedDate.getDate() !== day
+      ) {
+        throw new Error('Please choose a valid calendar date');
+      }
+      if (selectedDate < todayStr) throw new Error("Cannot create menus for past dates");
+
+      // New same-day menus must be published at least two hours before the plan target time.
+      const plan = plans?.find(p => p.id === editingPlanId);
+      if (!editingMenuId && selectedDate === todayStr && plan?.slot_target_time) {
+        const [h, m, s] = plan.slot_target_time.split(':').map(Number);
+        const targetTime = new Date();
+        targetTime.setHours(h, m, s, 0);
+        const cutoff = new Date(targetTime.getTime() - 2 * 60 * 60 * 1000); // 2 hours before delivery
+        
+        if (new Date() > cutoff) {
+          throw new Error(`Menu submission deadline has passed for today. You can only set menus for ${targetTime.toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})} or later deliveries 2+ hours in advance.`);
+        }
+      }
 
       const payload: any = {
         kitchen_id: kitchen?.id,
@@ -227,51 +257,26 @@ export default function VendorMenuPlanner() {
       
       if (error) throw new Error(error.message);
     },
-    onMutate: async () => {
-      const filteredItems = menuItems.map(item => item.trim()).filter(item => item !== '');
-      if (filteredItems.length === 0) return;
-      
-      const queryKey = ['vendor-menus', kitchen?.id, calendarMonth.getFullYear(), calendarMonth.getMonth()];
-      await queryClient.cancelQueries({ queryKey });
-      const previousMenus = queryClient.getQueryData(queryKey);
-
-      const optimisticMenu = {
-        id: editingMenuId || `temp-${Date.now()}`,
-        subscription_id: editingPlanId,
-        effective_date: selectedDate,
-        items: filteredItems,
-        notes: menuNotes.trim() || null,
-        status: 'active'
-      };
-
-      queryClient.setQueryData(queryKey, (old: any) => {
-        if (!old) return [optimisticMenu];
-        const exists = old.findIndex((m: any) => (m.subscription_id === editingPlanId && m.effective_date === selectedDate) || m.id === optimisticMenu.id);
-        if (exists >= 0) {
-          const next = [...old];
-          next[exists] = optimisticMenu;
-          return next;
-        }
-        return [...old, optimisticMenu];
-      });
-      
+    onSuccess: () => {
+      import('expo-haptics').then(Haptics => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success));
       setModalVisible(false);
       setMenuNotes('');
-      return { previousMenus, queryKey };
+      setMenuItems(['']);
+      setEditingPlanId(null);
+      Alert.alert('Menu Saved!', `Menu for ${selectedDate} has been published.`);
+      queryClient.invalidateQueries({ queryKey: ['vendor-menus', kitchen?.id, calendarMonth.getFullYear(), calendarMonth.getMonth()] });
     },
-    onError: (err: any, variables, context: any) => {
-      if (context?.previousMenus) queryClient.setQueryData(context.queryKey, context.previousMenus);
-      Alert.alert('Error', err.message);
-      setModalVisible(true);
-    },
-    onSettled: (data, error, variables, context: any) => {
-      if (context?.queryKey) queryClient.invalidateQueries({ queryKey: context.queryKey });
+    onError: (err: any) => {
+      import('expo-haptics').then(Haptics => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error));
+      Alert.alert('Menu Validation Error', err.message);
     }
   });
 
   const deleteMenu = useMutation({
     mutationFn: async (id: string) => {
-      await supabase.from('menus').delete().eq('id', id);
+      if (!id) throw new Error('Menu not found');
+      const { error } = await supabase.from('menus').delete().eq('id', id);
+      if (error) throw error;
     },
     onMutate: async (id: string) => {
       const queryKey = ['vendor-menus', kitchen?.id, calendarMonth.getFullYear(), calendarMonth.getMonth()];
@@ -284,14 +289,34 @@ export default function VendorMenuPlanner() {
       });
       return { previousMenus, queryKey };
     },
+    onSuccess: () => {
+      import('expo-haptics').then(Haptics => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success));
+      Alert.alert('Menu Deleted', 'The menu has been removed from this date.');
+    },
     onError: (err: any, variables, context: any) => {
       if (context?.previousMenus) queryClient.setQueryData(context.queryKey, context.previousMenus);
-      Alert.alert('Error', err.message);
+      import('expo-haptics').then(Haptics => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error));
+      Alert.alert('Unable to Delete Menu', err.message || 'Please try again.');
     },
     onSettled: (data, error, variables, context: any) => {
       if (context?.queryKey) queryClient.invalidateQueries({ queryKey: context.queryKey });
     }
   });
+
+  const handleSubmitMenu = () => {
+    if (!editingMenuId && selectedDate === todayStr) {
+      Alert.alert(
+        "Publish Today's Menu?",
+        'Customers may already be planning their orders. Make sure this menu is final before publishing.',
+        [
+          { text: 'Cancel', style: 'cancel' },
+          { text: 'Publish', onPress: () => submitMenu.mutate() },
+        ]
+      );
+      return;
+    }
+    submitMenu.mutate();
+  };
 
   const autofillWeek = useMutation({
     mutationFn: async () => {
@@ -550,7 +575,7 @@ export default function VendorMenuPlanner() {
     <View style={styles.center}>
       <Text style={{ fontSize: 40, marginBottom: 16 }}>📶</Text>
       <Text style={{ fontSize: 18, fontWeight: '700', color: '#101828', marginBottom: 8 }}>Connection Lost</Text>
-      <Text style={{ fontSize: 14, color: '#667085', textAlign: 'center', paddingHorizontal: 40 }}>We couldn't reach the servers. Please check your internet connection.</Text>
+      <Text style={{ fontSize: 14, color: '#667085', textAlign: 'center', paddingHorizontal: 40 }}>We couldn&apos;t reach the servers. Please check your internet connection.</Text>
       <TouchableOpacity 
         onPress={onRefresh} 
         disabled={refreshing}
@@ -597,7 +622,12 @@ export default function VendorMenuPlanner() {
               <TouchableOpacity 
                 key={day.dateStr} 
                 style={[styles.dayCard, isSelected && styles.dayCardActive, day.isPast && !isSelected && { opacity: 0.5 }]} 
-                onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setSelectedDate(day.dateStr); }}
+                onPress={() => {
+                  Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                  const date = parseLocalDate(day.dateStr);
+                  setSelectedDate(day.dateStr);
+                  setCalendarMonth(new Date(date.getFullYear(), date.getMonth(), 1));
+                }}
               >
                 <Text style={[styles.dayName, isSelected && styles.dayNameActive]}>{day.dayName}</Text>
                 <Text style={[styles.dayNum, isSelected && styles.dayNumActive]}>{day.dayNum}</Text>
@@ -639,7 +669,7 @@ export default function VendorMenuPlanner() {
           <View style={styles.emptyState}>
             <Text style={styles.emptyIcon}>📦</Text>
             <Text style={styles.emptyTitle}>No Active Plans</Text>
-            <Text style={styles.emptySub}>Create a meal plan first (like "Veg Lunch") before you can schedule a daily menu.</Text>
+            <Text style={styles.emptySub}>Create a meal plan first, such as &quot;Veg Lunch&quot;, before you can schedule a daily menu.</Text>
             <TouchableOpacity style={{marginTop: 24, backgroundColor: '#101828', paddingHorizontal: 20, paddingVertical: 12, borderRadius: 12}} onPress={() => router.push('/(vendor)/plans')}>
               <Text style={{color: '#FFF', fontWeight: '700', fontSize: 14}}>Go to Plans</Text>
             </TouchableOpacity>
@@ -696,7 +726,7 @@ export default function VendorMenuPlanner() {
                       </View>
                     ))}
                     {planMenu.notes ? (
-                      <Text style={styles.notesText}>Chef's Note: {planMenu.notes}</Text>
+                      <Text style={styles.notesText}>Chef&apos;s Note: {planMenu.notes}</Text>
                     ) : null}
                     {(!isSelectedPast || isTimeLocked) && (
                       <View style={styles.actionRow}>
@@ -781,7 +811,7 @@ export default function VendorMenuPlanner() {
                                 </View>
                               ))}
                               {planMenu.notes ? (
-                                <Text style={styles.notesText}>Chef's Note: {planMenu.notes}</Text>
+                                <Text style={styles.notesText}>Chef&apos;s Note: {planMenu.notes}</Text>
                               ) : null}
                               {!isSelectedPast && (
                                 <View style={styles.actionRow}>
@@ -892,7 +922,7 @@ export default function VendorMenuPlanner() {
             </View>
 
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end' }}>
-              <Text style={styles.label}>Chef's Note (Optional)</Text>
+              <Text style={styles.label}>Chef&apos;s Note (Optional)</Text>
               <Text style={{ fontSize: 12, fontWeight: '600', color: menuNotes.length >= 190 ? '#EF4444' : '#9CA3AF' }}>{menuNotes.length}/200</Text>
             </View>
             <TextInput 
@@ -906,7 +936,7 @@ export default function VendorMenuPlanner() {
             />
           </ScrollView>
           <View style={styles.modalFooter}>
-            <TouchableOpacity style={styles.saveBtn} onPress={() => submitMenu.mutate()} disabled={submitMenu.isPending}>
+            <TouchableOpacity style={styles.saveBtn} onPress={handleSubmitMenu} disabled={submitMenu.isPending}>
               {submitMenu.isPending ? <ActivityIndicator color="#FFF" /> : <Text style={styles.saveBtnText}>{editingMenuId ? 'Save Changes' : 'Publish Menu'}</Text>}
             </TouchableOpacity>
           </View>
@@ -953,7 +983,13 @@ export default function VendorMenuPlanner() {
                   <TouchableOpacity 
                     key={idx} 
                     style={[{width: '14.28%', aspectRatio: 1, padding: 2, alignItems: 'center', justifyContent: 'center'}, !day.isCurrentMonth && {opacity: 0.3}]}
-                    onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setSelectedDate(day.dateStr); setMonthModalVisible(false); }}
+                    onPress={() => {
+                      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+                      const date = parseLocalDate(day.dateStr);
+                      setSelectedDate(day.dateStr);
+                      setCalendarMonth(new Date(date.getFullYear(), date.getMonth(), 1));
+                      setMonthModalVisible(false);
+                    }}
                   >
                     <View style={[
                       {width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center'},
