@@ -6,6 +6,7 @@ import { useAuthStore } from '@/store/authStore';
 import { Alert } from 'react-native';
 import ErrorBoundary from '@/components/ErrorBoundary';
 import Logger from '@/utils/logger';
+import { registerForPushNotifications } from '@/lib/notifications';
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -40,6 +41,7 @@ export default function RootLayout() {
       if (data && data.role) {
         Logger.info('User role fetched', { role: data.role });
         setRole(data.role as any);
+        registerForPushNotifications(userId).catch(() => {});
         setLoading(false);
         return;
       } else {
