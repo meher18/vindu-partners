@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity, ActivityIndicator, Alert, RefreshControl, Modal } from 'react-native';
+import { View, Text, StyleSheet, SafeAreaView, ScrollView, TouchableOpacity, ActivityIndicator, Alert, RefreshControl, Modal, TextInput } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
@@ -116,11 +116,62 @@ export default function DispatchScreen() {
     }
   });
 
+  const [otpModalVisible, setOtpModalVisible] = useState(false);
+  const [takeawayOtp, setTakeawayOtp] = useState('');
+
+  const verifyTakeawayOtp = useMutation({
+    mutationFn: async (otp: string) => {
+      if (!otp || otp.length !== 4) throw new Error('Enter a valid 4-digit OTP');
+      const today = getLocalISODate(new Date());
+      
+      // Find delivery with this OTP today for this kitchen
+      const { data: d, error: searchError } = await supabase
+        .from('deliveries')
+        .select('id, status, customer_subscriptions!inner(subscription_id, subscriptions!inner(kitchen_id))')
+        .eq('date', today)
+        .eq('otp_code', otp)
+        .eq('customer_subscriptions.subscriptions.kitchen_id', kitchen?.id)
+        .maybeSingle();
+
+      if (searchError) throw searchError;
+      if (!d) throw new Error('Invalid OTP. No matching order found today.');
+      if (d.status === 'delivered') throw new Error('This order was already picked up.');
+
+      // Mark delivered
+      const { error: updateError } = await supabase
+        .from('deliveries')
+        .update({ status: 'delivered', delivered_at: new Date().toISOString() })
+        .eq('id', d.id);
+        
+      if (updateError) throw updateError;
+      return true;
+    },
+    onSuccess: () => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
+      Alert.alert('Success!', 'Takeaway order verified and marked as delivered.');
+      setOtpModalVisible(false);
+      setTakeawayOtp('');
+      refetch();
+    },
+    onError: (err: any) => {
+      Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
+      Alert.alert('Verification Failed', err.message);
+    }
+  });
+
   return (
     <SafeAreaView style={styles.safe}>
       <View style={styles.header}>
-        <Text style={styles.title}>Dispatch Hub</Text>
-        <Text style={styles.subtitle}>Manage handoffs to delivery drivers</Text>
+        <View>
+          <Text style={styles.title}>Dispatch Hub</Text>
+          <Text style={styles.subtitle}>Manage handoffs to drivers & customers</Text>
+        </View>
+        <TouchableOpacity 
+          style={{ backgroundColor: '#FF6B6B', paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12 }}
+          onPress={() => setOtpModalVisible(true)}
+        >
+          <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 13 }}>Verify Takeaway</Text>
+        </TouchableOpacity>
       </View>
       
       <ScrollView contentContainerStyle={styles.scroll} refreshControl={<RefreshControl refreshing={isRefetching} onRefresh={refetch} tintColor="#FF6B6B" />}>
@@ -277,6 +328,37 @@ export default function DispatchScreen() {
               style={{ marginTop: 28, backgroundColor: '#FF6B6B', borderRadius: 14, paddingVertical: 14, paddingHorizontal: 40 }}
             >
               <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 16 }}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      {/* Takeaway OTP Modal */}
+      <Modal visible={otpModalVisible} animationType="slide" transparent>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+          <View style={{ backgroundColor: '#FFF', borderRadius: 24, padding: 32, width: '100%', alignItems: 'center' }}>
+            <Text style={{ fontSize: 20, fontWeight: '800', color: '#1A1A2E', marginBottom: 8 }}>Customer Takeaway</Text>
+            <Text style={{ fontSize: 14, color: '#667085', textAlign: 'center', marginBottom: 24 }}>
+              Enter the 4-digit OTP shown on the customer's phone to verify their pickup.
+            </Text>
+            
+            <TextInput
+              style={{ width: '100%', backgroundColor: '#F9FAFB', borderRadius: 16, padding: 20, fontSize: 32, fontWeight: '800', textAlign: 'center', letterSpacing: 8, color: '#1A1A2E', marginBottom: 24 }}
+              keyboardType="number-pad"
+              maxLength={4}
+              value={takeawayOtp}
+              onChangeText={setTakeawayOtp}
+              placeholder="0000"
+            />
+            
+            <TouchableOpacity 
+              style={{ width: '100%', backgroundColor: '#FF6B6B', paddingVertical: 16, borderRadius: 16, alignItems: 'center', marginBottom: 12, opacity: verifyTakeawayOtp.isPending ? 0.7 : 1 }}
+              onPress={() => verifyTakeawayOtp.mutate(takeawayOtp)}
+              disabled={verifyTakeawayOtp.isPending}
+            >
+              {verifyTakeawayOtp.isPending ? <ActivityIndicator color="#FFF" /> : <Text style={{ color: '#FFF', fontWeight: '800', fontSize: 16 }}>Verify & Handover</Text>}
+            </TouchableOpacity>
+            
+            <TouchableOpacity onPress={() => { setOtpModalVisible(false); setTakeawayOtp(''); }}>
+              <Text style={{ color: '#667085', fontWeight: '600', padding: 12 }}>Cancel</Text>
             </TouchableOpacity>
           </View>
         </View>
