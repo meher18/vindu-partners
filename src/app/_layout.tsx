@@ -94,12 +94,13 @@ export default function RootLayout() {
       router.replace('/(auth)/login');
     } else if (user) {
       if (role === 'customer') {
-        Alert.alert('Access Denied', 'This app is for registered partners only.');
+        Alert.alert('Access Denied', 'This app is for registered kitchen partners only. Customers, please use the Vindu app.');
+        supabase.auth.signOut();
+      } else if (role === 'driver') {
+        Alert.alert('Wrong App', 'Delivery pilots use the Vindu Pilots app. Please download it from the App Store.');
         supabase.auth.signOut();
       } else if (role === 'vendor' && segments[0] !== '(vendor)') {
         router.replace('/(vendor)');
-      } else if (role === 'driver' && segments[0] !== '(driver)') {
-        router.replace('/(driver)');
       }
     }
   }, [user, isLoading, segments, role]);
