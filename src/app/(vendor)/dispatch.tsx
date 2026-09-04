@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
 import * as Haptics from 'expo-haptics';
+import QRCode from 'react-native-qrcode-svg';
 
 const getLocalISODate = (date: Date) => {
   const offset = date.getTimezoneOffset() * 60000;
@@ -25,6 +26,7 @@ export default function DispatchScreen() {
   });
 
   const [activeBatch, setActiveBatch] = useState<any>(null);
+  const [qrModal, setQrModal] = useState<{ batchId: string; slot: string; kitchenId: string } | null>(null);
 
   const { data: dispatchBatches, isLoading, isError: dispatchError, refetch, isRefetching } = useQuery({
     queryKey: ['vendor-dispatch', kitchen?.id],
@@ -104,7 +106,9 @@ export default function DispatchScreen() {
     onSuccess: (updatedCount) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       queryClient.invalidateQueries({ queryKey: ['vendor-dispatch', kitchen?.id] });
-      Alert.alert('Batch Ready!', `${updatedCount} delivery record${updatedCount === 1 ? '' : 's'} staged for driver pickup.`);
+      const today = getLocalISODate(new Date());
+      setQrModal({ batchId: `${kitchen?.id}_${today}`, slot: 'BATCH', kitchenId: kitchen?.id || '' });
+      Alert.alert('Batch Ready!', `${updatedCount} delivery record${updatedCount === 1 ? '' : 's'} staged. Show the QR code below to your driver.`);
     },
     onError: (err: any) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -200,6 +204,18 @@ export default function DispatchScreen() {
                   </TouchableOpacity>
                 </View>
               )}
+
+              {isFullyReady && !isFullyPickedUp && (
+                <TouchableOpacity 
+                  style={{ marginTop: 12, backgroundColor: '#1A1A2E', borderRadius: 14, paddingVertical: 14, alignItems: 'center' }}
+                  onPress={() => {
+                    const today = getLocalISODate(new Date());
+                    setQrModal({ batchId: `${kitchen?.id}_${today}_${batch.slot}`, slot: batch.slot, kitchenId: kitchen?.id || '' });
+                  }}
+                >
+                  <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 15 }}>📱 Show Driver Pickup QR</Text>
+                </TouchableOpacity>
+              )}
               
               <TouchableOpacity 
                 style={styles.packingListBtn}
@@ -240,6 +256,30 @@ export default function DispatchScreen() {
             ))}
           </ScrollView>
         </SafeAreaView>
+      </Modal>
+
+      {/* QR Code Modal for Driver Pickup */}
+      <Modal visible={!!qrModal} animationType="fade" transparent>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.85)', justifyContent: 'center', alignItems: 'center', padding: 24 }}>
+          <View style={{ backgroundColor: '#FFF', borderRadius: 28, padding: 32, alignItems: 'center', width: '100%' }}>
+            <Text style={{ fontSize: 20, fontWeight: '800', color: '#1A1A2E', marginBottom: 4 }}>Driver Pickup QR</Text>
+            <Text style={{ fontSize: 14, color: '#667085', marginBottom: 24 }}>{qrModal?.slot} — Show to driver to scan</Text>
+            {qrModal && (
+              <QRCode
+                value={JSON.stringify({ kitchen_id: qrModal.kitchenId, slot: qrModal.slot, date: getLocalISODate(new Date()), batch_id: qrModal.batchId })}
+                size={220}
+                backgroundColor="#FFF"
+                color="#1A1A2E"
+              />
+            )}
+            <TouchableOpacity 
+              onPress={() => setQrModal(null)}
+              style={{ marginTop: 28, backgroundColor: '#FF6B6B', borderRadius: 14, paddingVertical: 14, paddingHorizontal: 40 }}
+            >
+              <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 16 }}>Close</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
       </Modal>
     </SafeAreaView>
   );
