@@ -26,29 +26,34 @@ export default function RootLayout() {
   const segments = useSegments();
   const router = useRouter();
 
-  async function fetchUserRole(userId: string, retries = 3) {
+  async function fetchUserRole(userId: string, retries = 5) {
+    setLoading(true);
     try {
       const { data, error } = await supabase
         .from('profiles')
         .select('role')
         .eq('id', userId)
-        .single();
+        .maybeSingle();
 
       if (error) throw error;
       
-      if (data) {
+      if (data && data.role) {
         Logger.info('User role fetched', { role: data.role });
         setRole(data.role as any);
+        setLoading(false);
+        return;
+      } else {
+        throw new Error('Profile not ready yet');
       }
     } catch (err: any) {
       Logger.error('Failed to fetch user role', { userId, retries, error: err.message });
       if (retries > 0) {
-        setTimeout(() => fetchUserRole(userId, retries - 1), 500);
+        setTimeout(() => fetchUserRole(userId, retries - 1), 1000);
         return;
       }
       Logger.warn('Failed to fetch role after retries', { userId });
+      setLoading(false);
     }
-    setLoading(false);
   }
 
   useEffect(() => {
