@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView, Alert, SafeAreaView, ActivityIndicator, RefreshControl, TextInput } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView, Alert, SafeAreaView, ActivityIndicator, RefreshControl, TextInput, Switch } from 'react-native';
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
@@ -62,6 +62,8 @@ export default function VendorPlans() {
   const [price, setPrice] = useState(120);
   const [capacity, setCapacity] = useState(50);
   const [opDays, setOpDays] = useState<'7-day' | '5-day'>('7-day');
+  const [deliveryType, setDeliveryType] = useState<'home_delivery' | 'takeaway'>('home_delivery');
+  const [allowSkips, setAllowSkips] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
   const { data: kitchen } = useQuery({
@@ -156,7 +158,8 @@ export default function VendorPlans() {
         duration_type: 'monthly',
         slot_name: slotName,
         slot_target_time: slotTargetTime,
-        delivery_type: 'home_delivery',
+        delivery_type: deliveryType,
+        allow_skips: allowSkips,
         price_per_day: price, // Placeholder, Postgres will overwrite this
         vendor_fee: price,    // This is the true source metric now
         delivery_fee: 0,      // Placeholder, Postgres will overwrite this
@@ -433,6 +436,25 @@ export default function VendorPlans() {
             <TouchableOpacity style={[styles.chip, opDays === '5-day' && styles.chipActive]} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setOpDays('5-day'); }}>
               <Text style={[styles.chipText, opDays === '5-day' && styles.chipTextActive]}>Mon-Fri Only</Text>
             </TouchableOpacity>
+          </View>
+
+          <Text style={styles.label}>Delivery Type</Text>
+          <View style={styles.chipRow}>
+            <TouchableOpacity style={[styles.chip, deliveryType === 'home_delivery' && styles.chipActive]} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setDeliveryType('home_delivery'); }}>
+              <Text style={[styles.chipText, deliveryType === 'home_delivery' && styles.chipTextActive]}>Home Delivery</Text>
+            </TouchableOpacity>
+            <TouchableOpacity style={[styles.chip, deliveryType === 'takeaway' && styles.chipActive]} onPress={() => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setDeliveryType('takeaway'); }}>
+              <Text style={[styles.chipText, deliveryType === 'takeaway' && styles.chipTextActive]}>Takeaway</Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 20 }}>
+            <Text style={[styles.label, { marginTop: 0, marginBottom: 0 }]}>Allow Customer Skips</Text>
+            <Switch
+              value={allowSkips}
+              onValueChange={(val) => { Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light); setAllowSkips(val); }}
+              trackColor={{ false: '#E5E7EB', true: '#FF6B6B' }}
+            />
           </View>
 
           <View style={styles.summary}>

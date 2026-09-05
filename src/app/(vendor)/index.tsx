@@ -4,10 +4,7 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { useAuthStore } from '@/store/authStore';
 
-const getLocalToday = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-};
+import { getISTDateString } from '@/utils/dateUtils';
 
 const getLocalDayShort = () => {
   const days = ['sun','mon','tue','wed','thu','fri','sat'];
@@ -31,7 +28,7 @@ export default function VendorDashboard() {
     const timer = setInterval(() => setCurrentTime(new Date()), 60000); // Update every minute
     return () => clearInterval(timer);
   }, []);
-  const [holidayDate, setHolidayDate] = useState(getLocalToday());
+  const [holidayDate, setHolidayDate] = useState(getISTDateString());
   const [holidayReason, setHolidayReason] = useState('Kitchen Closed');
 
   const { data: kitchen, isLoading } = useQuery({
@@ -63,7 +60,7 @@ export default function VendorDashboard() {
         .from('menus')
         .select('subscription_id, effective_date')
         .in('subscription_id', plans.map(p => p.id))
-        .gte('effective_date', getLocalToday());
+        .gte('effective_date', getISTDateString());
       return data || [];
     },
     enabled: !!plans && plans.length > 0,
@@ -74,10 +71,10 @@ export default function VendorDashboard() {
     queryFn: async () => {
       if (!plans || plans.length === 0) return { today: { total: 0, breakdown: {} }, tomorrow: { total: 0, breakdown: {} } };
       
-      const todayStr = getLocalToday();
+      const todayStr = getISTDateString();
       const d = new Date(todayStr);
       d.setDate(d.getDate() + 1);
-      const tomorrowStr = d.toISOString().split('T')[0];
+      const tomorrowStr = getISTDateString(d);
 
       const days = ['sun','mon','tue','wed','thu','fri','sat'];
       const todayShort = days[new Date(todayStr).getDay()];
@@ -170,7 +167,7 @@ export default function VendorDashboard() {
   const { data: holidays, isLoading: isHolidaysLoading } = useQuery({
     queryKey: ['vendor-holidays', kitchen?.id],
     queryFn: async () => {
-      const { data } = await supabase.from('kitchen_holidays').select('*').eq('kitchen_id', kitchen?.id).gte('holiday_date', new Date().toISOString().split('T')[0]).order('holiday_date', { ascending: true });
+      const { data } = await supabase.from('kitchen_holidays').select('*').eq('kitchen_id', kitchen?.id).gte('holiday_date', getISTDateString()).order('holiday_date', { ascending: true });
       return data || [];
     },
     enabled: !!kitchen?.id,
@@ -274,7 +271,7 @@ export default function VendorDashboard() {
       const parsedDate = new Date(year, month - 1, day);
       if (isNaN(parsedDate.getTime())) throw new Error("Invalid date entered");
       
-      const todayStr = getLocalToday();
+      const todayStr = getISTDateString();
       if (holidayDate < todayStr) throw new Error("Cannot mark a date in the past as a holiday");
       if (holidayDate === todayStr) throw new Error("Cannot mark today as a holiday. Only future dates are allowed.");
       
@@ -315,7 +312,7 @@ export default function VendorDashboard() {
     onSuccess: () => {
       import('expo-haptics').then(Haptics => Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success));
       setHolidayModal(false);
-      setHolidayDate(getLocalToday());
+      setHolidayDate(getISTDateString());
       setHolidayReason('Kitchen Closed');
       queryClient.invalidateQueries({ queryKey: ['vendor-holidays', kitchen?.id] });
       Alert.alert('Holiday Marked', 'Your kitchen will not accept orders for this date. All customers will be notified.');
@@ -349,10 +346,10 @@ export default function VendorDashboard() {
   let alertDayText = 'Tomorrow';
   
   if (plans && menus && prepForecast) {
-    const todayStr = getLocalToday();
+    const todayStr = getISTDateString();
     const tmrw = new Date();
     tmrw.setDate(tmrw.getDate() + 1);
-    const tmrwStr = `${tmrw.getFullYear()}-${String(tmrw.getMonth() + 1).padStart(2, '0')}-${String(tmrw.getDate()).padStart(2, '0')}`;
+    const tmrwStr = getISTDateString(tmrw);
     
     const checkDay = (dateStr: string, dayKey: 'today' | 'tomorrow') => {
       let missingInDay = false;
@@ -450,7 +447,7 @@ export default function VendorDashboard() {
         {(() => {
           if (!plans || plans.length === 0) return null;
           
-          const todayStr = getLocalToday();
+          const todayStr = getISTDateString();
           const days = ['sun','mon','tue','wed','thu','fri','sat'];
           const todayShort = days[currentTime.getDay()];
           

@@ -11,11 +11,9 @@ if (Platform.OS === 'android' && UIManager.setLayoutAnimationEnabledExperimental
   UIManager.setLayoutAnimationEnabledExperimental(true);
 }
 
+import { getISTDateString } from '@/utils/dateUtils';
+
 // Helper to get local date string YYYY-MM-DD instead of UTC
-const getLocalISODate = (d: Date) => {
-  const offset = d.getTimezoneOffset() * 60000;
-  return new Date(d.getTime() - offset).toISOString().split('T')[0];
-};
 
 const parseLocalDate = (dateStr: string) => {
   if (!dateStr) return new Date();
@@ -59,14 +57,14 @@ const generateMonthGrid = (targetDate: Date) => {
 const generateDays = (anchorDateStr: string) => {
   const days = [];
   const anchor = parseLocalDate(anchorDateStr);
-  const todayStr = getLocalISODate(new Date());
+  const todayStr = getISTDateString(new Date());
 
   for (let i = -3; i <= 10; i++) {
     // Construct each day by adding to year/month/date integers, not by mutating
     // a Date object. This prevents DST-transition days from shifting by ±1 hour
     // and causing getDate() to return the wrong value near midnight boundaries.
     const d = new Date(anchor.getFullYear(), anchor.getMonth(), anchor.getDate() + i);
-    const dStr = getLocalISODate(d);
+    const dStr = getISTDateString(d);
     
     days.push({
       dateStr: dStr,
@@ -86,7 +84,7 @@ export default function VendorMenuPlanner() {
   const queryClient = useQueryClient();
   const router = useRouter();
   const [refreshing, setRefreshing] = useState(false);
-  const todayStr = getLocalISODate(new Date());
+  const todayStr = getISTDateString(new Date());
   const [selectedDate, setSelectedDate] = useState(todayStr);
   const daysWindow = generateDays(selectedDate);
   const [calendarMonth, setCalendarMonth] = useState(new Date());
@@ -176,8 +174,8 @@ export default function VendorMenuPlanner() {
         .from('menus')
         .select('*')
         .in('subscription_id', plans.map(p => p.id))
-        .gte('effective_date', getLocalISODate(minDate))
-        .lte('effective_date', getLocalISODate(maxDate));
+        .gte('effective_date', getISTDateString(minDate))
+        .lte('effective_date', getISTDateString(maxDate));
       if (error) throw error;
       return data || [];
     },
@@ -214,7 +212,7 @@ export default function VendorMenuPlanner() {
       });
 
       // Validate date, including calendar rollover cases such as February 31.
-      const todayStr = getLocalISODate(new Date());
+      const todayStr = getISTDateString(new Date());
       const [year, month, day] = selectedDate.split('-').map(Number);
       const parsedDate = new Date(year, month - 1, day);
       if (
@@ -326,10 +324,10 @@ export default function VendorMenuPlanner() {
 
       for (let i = 0; i < 7; i++) {
         const targetDate = new Date(todayObj.getFullYear(), todayObj.getMonth(), todayObj.getDate() + i);
-        const targetStr = getLocalISODate(targetDate);
+        const targetStr = getISTDateString(targetDate);
         
         const pastDate = new Date(targetDate.getFullYear(), targetDate.getMonth(), targetDate.getDate() - 7);
-        const pastStr = getLocalISODate(pastDate);
+        const pastStr = getISTDateString(pastDate);
         
         const targetDayStr = SHORT_DAYS[targetDate.getDay()];
 
@@ -440,7 +438,7 @@ export default function VendorMenuPlanner() {
     const executeCopy = async () => {
       const selectedDateObj = parseLocalDate(selectedDate);
       const pastDateObj = new Date(selectedDateObj.getFullYear(), selectedDateObj.getMonth(), selectedDateObj.getDate() - 7);
-      const lastWeekStr = getLocalISODate(pastDateObj);
+      const lastWeekStr = getISTDateString(pastDateObj);
       const lastWeekDayName = selectedDateObj.toLocaleDateString('en-US', { weekday: 'long' });
       
       const lastWeekMenu = menus.find(m => m.subscription_id === editingPlanId && m.effective_date === lastWeekStr);

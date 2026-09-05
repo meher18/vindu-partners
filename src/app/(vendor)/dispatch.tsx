@@ -6,10 +6,7 @@ import { useAuthStore } from '@/store/authStore';
 import * as Haptics from 'expo-haptics';
 import QRCode from 'react-native-qrcode-svg';
 
-const getLocalISODate = (date: Date) => {
-  const offset = date.getTimezoneOffset() * 60000;
-  return new Date(date.getTime() - offset).toISOString().split('T')[0];
-};
+import { getISTDateString } from '@/utils/dateUtils';
 
 export default function DispatchScreen() {
   const { user } = useAuthStore();
@@ -26,7 +23,7 @@ export default function DispatchScreen() {
   });
 
   const [activeBatch, setActiveBatch] = useState<any>(null);
-  const [qrModal, setQrModal] = useState<{ batchId: string; slot: string; kitchenId: string } | null>(null);
+  const [qrModal, setQrModal] = useState<{ batchId: string; slot: string; kitchenId: string; pickupSecret: string } | null>(null);
 
   const { data: dispatchBatches, isLoading, isError: dispatchError, refetch, isRefetching } = useQuery({
     queryKey: ['vendor-dispatch', kitchen?.id],
@@ -42,13 +39,13 @@ export default function DispatchScreen() {
       if (!cSubs || cSubs.length === 0) return [];
 
       // 3. Get today's deliveries for these customer subscriptions
-      const today = getLocalISODate(new Date());
-      const { data: deliveries, error: deliveriesError } = await supabase.from('deliveries').select('id, customer_subscription_id, status, vendor_ready_at').in('customer_subscription_id', cSubs.map(cs => cs.id)).eq('date', today);
+      const today = getISTDateString();
+      const { data: deliveries, error: deliveriesError } = await supabase.from('deliveries').select('id, customer_subscription_id, status, vendor_ready_at, pickup_secret').in('customer_subscription_id', cSubs.map(cs => cs.id)).eq('date', today);
       if (deliveriesError) throw deliveriesError;
       if (!deliveries) return [];
 
       // Group by slot
-      const batches: Record<string, { slot: string, totalQty: number, readyCount: number, pickedUpCount: number, deliveryIds: string[], dietBreakdown: Record<string, number>, rawDeliveries: any[] }> = {};
+      const batches: Record<string, { slot: string, totalQty: number, readyCount: number, pickedUpCount: number, deliveryIds: string[], dietBreakdown: Record<string, number>, rawDeliveries: any[], pickupSecret?: string }> = {};
 
       deliveries.forEach(del => {
         const cSub = cSubs.find(cs => cs.id === del.customer_subscription_id);
@@ -61,7 +58,9 @@ export default function DispatchScreen() {
         
         const qty = cSub.quantity || 1;
         batches[slot].totalQty += qty;
-        batches[slot].deliveryIds.push(del.id);
+        if (del.status === 'scheduled') {
+          batches[slot].deliveryIds.push(del.id);
+        }
         batches[slot].rawDeliveries.push({
           id: del.id,
           diet: plan.diet_type.toUpperCase(),
@@ -72,6 +71,7 @@ export default function DispatchScreen() {
         
         if (del.vendor_ready_at) batches[slot].readyCount += qty;
         if (del.status === 'picked_up' || del.status === 'delivered') batches[slot].pickedUpCount += qty;
+        if (del.pickup_secret) batches[slot].pickupSecret = del.pickup_secret;
 
         const diet = plan.diet_type.toUpperCase();
         batches[slot].dietBreakdown[diet] = (batches[slot].dietBreakdown[diet] || 0) + qty;
@@ -83,32 +83,30 @@ export default function DispatchScreen() {
   });
 
   const markBatchReady = useMutation({
-    mutationFn: async (deliveryIds: string[]) => {
-      if (!deliveryIds || deliveryIds.length === 0) throw new Error('No deliveries to mark ready');
+    mutationFn: async ({ deliveryIds, existingSecret }: { deliveryIds: string[], existingSecret?: string }) => {
+      if (existingSecret) {
+        return { updatedCount: 0, secret: existingSecret };
+      }
+      if (!deliveryIds || deliveryIds.length === 0) throw new Error('No scheduled deliveries left to mark ready.');
       if (!kitchen?.id) throw new Error('Kitchen not found. Please refresh.');
       
-      const { data: updatedDeliveries, error } = await supabase
-        .from('deliveries')
-        .update({ 
-          vendor_ready_at: new Date().toISOString(), 
-          status: 'vendor_ready' 
-        })
-        .in('id', deliveryIds)
-        .is('vendor_ready_at', null)
-        .select('id');
+      const { data: secret, error } = await supabase.rpc('secure_vendor_mark_batch_ready', {
+        p_delivery_ids: deliveryIds
+      });
       
       if (error) throw error;
-      if (!updatedDeliveries || updatedDeliveries.length === 0) {
-        throw new Error('These deliveries were already marked ready. Refresh the dispatch list.');
-      }
-      return updatedDeliveries.length;
+      if (!secret) throw new Error('Failed to generate secure pickup token.');
+      
+      return { updatedCount: deliveryIds.length, secret };
     },
-    onSuccess: (updatedCount) => {
+    onSuccess: ({ updatedCount, secret }) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Success);
       queryClient.invalidateQueries({ queryKey: ['vendor-dispatch', kitchen?.id] });
-      const today = getLocalISODate(new Date());
-      setQrModal({ batchId: `${kitchen?.id}_${today}`, slot: 'BATCH', kitchenId: kitchen?.id || '' });
-      Alert.alert('Batch Ready!', `${updatedCount} delivery record${updatedCount === 1 ? '' : 's'} staged. Show the QR code below to your driver.`);
+      const today = getISTDateString();
+      setQrModal({ batchId: `${kitchen?.id}_${today}`, slot: 'BATCH', kitchenId: kitchen?.id || '', pickupSecret: secret });
+      if (updatedCount > 0) {
+        Alert.alert('Batch Ready!', `${updatedCount} delivery record${updatedCount === 1 ? '' : 's'} staged. Show the QR code below to your driver.`);
+      }
     },
     onError: (err: any) => {
       Haptics.notificationAsync(Haptics.NotificationFeedbackType.Error);
@@ -122,28 +120,16 @@ export default function DispatchScreen() {
   const verifyTakeawayOtp = useMutation({
     mutationFn: async (otp: string) => {
       if (!otp || otp.length !== 4) throw new Error('Enter a valid 4-digit OTP');
-      const today = getLocalISODate(new Date());
-      
-      // Find delivery with this OTP today for this kitchen
-      const { data: d, error: searchError } = await supabase
-        .from('deliveries')
-        .select('id, status, customer_subscriptions!inner(subscription_id, subscriptions!inner(kitchen_id))')
-        .eq('date', today)
-        .eq('otp_code', otp)
-        .eq('customer_subscriptions.subscriptions.kitchen_id', kitchen?.id)
-        .maybeSingle();
+      // Call the server-side RPC to verify OTP and mark delivered securely
+      const { error: rpcError } = await supabase.rpc('secure_vendor_complete_takeaway_by_otp', { 
+        p_kitchen_id: kitchen?.id, 
+        p_otp: otp 
+      });
 
-      if (searchError) throw searchError;
-      if (!d) throw new Error('Invalid OTP. No matching order found today.');
-      if (d.status === 'delivered') throw new Error('This order was already picked up.');
+      if (rpcError) {
+        throw new Error(rpcError.message || 'Failed to verify takeaway OTP.');
+      }
 
-      // Mark delivered
-      const { error: updateError } = await supabase
-        .from('deliveries')
-        .update({ status: 'delivered', delivered_at: new Date().toISOString() })
-        .eq('id', d.id);
-        
-      if (updateError) throw updateError;
       return true;
     },
     onSuccess: () => {
@@ -246,7 +232,7 @@ export default function DispatchScreen() {
                       Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium);
                       Alert.alert('Ready for Pickup?', `Are you sure all ${batch.totalQty} boxes for ${batch.slot} are packed and staged for driver pickup?`, [
                         { text: 'Cancel', style: 'cancel' },
-                        { text: 'Confirm Ready', onPress: () => markBatchReady.mutate(batch.deliveryIds) }
+                        { text: 'Confirm Ready', onPress: () => markBatchReady.mutate({ deliveryIds: batch.deliveryIds, existingSecret: batch.pickupSecret }) }
                       ]);
                     }}
                     disabled={markBatchReady.isPending}
@@ -260,8 +246,8 @@ export default function DispatchScreen() {
                 <TouchableOpacity 
                   style={{ marginTop: 12, backgroundColor: '#1A1A2E', borderRadius: 14, paddingVertical: 14, alignItems: 'center' }}
                   onPress={() => {
-                    const today = getLocalISODate(new Date());
-                    setQrModal({ batchId: `${kitchen?.id}_${today}_${batch.slot}`, slot: batch.slot, kitchenId: kitchen?.id || '' });
+                    const today = getISTDateString();
+                    setQrModal({ batchId: `${kitchen?.id}_${today}_${batch.slot}`, slot: batch.slot, kitchenId: kitchen?.id || '', pickupSecret: batch.pickupSecret! });
                   }}
                 >
                   <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 15 }}>📱 Show Driver Pickup QR</Text>
@@ -317,7 +303,7 @@ export default function DispatchScreen() {
             <Text style={{ fontSize: 14, color: '#667085', marginBottom: 24 }}>{qrModal?.slot} — Show to driver to scan</Text>
             {qrModal && (
               <QRCode
-                value={JSON.stringify({ kitchen_id: qrModal.kitchenId, slot: qrModal.slot, date: getLocalISODate(new Date()), batch_id: qrModal.batchId })}
+                value={JSON.stringify({ kitchen_id: qrModal.kitchenId, slot: qrModal.slot, date: getISTDateString(), batch_id: qrModal.batchId, pickup_secret: qrModal.pickupSecret })}
                 size={220}
                 backgroundColor="#FFF"
                 color="#1A1A2E"
